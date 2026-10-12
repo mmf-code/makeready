@@ -65,7 +65,7 @@ export const DesignSpecDraftSchema = z.object({
   targetHeightMm: z.number().positive().max(2000),
   preserve: z.array(z.string().min(1).max(500)).max(20),
   changeable: z.array(z.string().min(1).max(500)).max(20),
-  process: z.enum(["resin_candidate", "fdm_candidate"]),
+  process: z.enum(["resin_candidate", "fdm_candidate", "cnc_candidate"]),
 }).strict();
 export type DesignSpecDraft = z.infer<typeof DesignSpecDraftSchema>;
 
@@ -213,7 +213,7 @@ export function createDesignIntelligence(options: {
       if (input.targetHeightMm !== undefined) z.number().positive().max(2000).parse(input.targetHeightMm);
       const messages: IntelligenceMessage[] = [{ role: "user", content: JSON.stringify({ description, objectType: input.objectType, use: input.use, targetHeightMm: input.targetHeightMm }) }];
       if (input.referenceImageUrl) messages.push(...image("User's reference image", input.referenceImageUrl));
-      const spec = await structured(DesignSpecDraftSchema, "makeready_design_spec", "design_spec", "Translate the user's intent into a small design specification. Preserve explicit constraints. If no height is given, use 100 mm as an assumption. 'process' is only a candidate, never certified printable. Do not infer safety for load bearing or medical uses.", messages);
+      const spec = await structured(DesignSpecDraftSchema, "makeready_design_spec", "design_spec", "Translate the user's intent into a small design specification. Preserve explicit constraints. If no height is given, use 100 mm as an assumption. Choose cnc_candidate for explicit CNC or machining use; otherwise choose the appropriate resin_candidate or fdm_candidate. 'process' is only a candidate, never certified manufacturable. Do not claim tool access, CAM, undercuts or machining feasibility have been verified. Do not infer safety for load bearing or medical uses.", messages);
       // The model must not silently change the explicitly requested dimensions.
       if (input.targetHeightMm !== undefined) spec.targetHeightMm = input.targetHeightMm;
       return spec;

@@ -28,6 +28,18 @@ describe("bounded design intelligence", () => {
     expect(onResponse).toHaveBeenCalledWith({ operation: "design_spec", responseId: "resp_123", requestId: "req_123", model: INTELLIGENCE_MODEL, inputTokens: 150, cachedInputTokens: 20, outputTokens: 100, totalTokens: 250 });
   });
 
+  it("accepts a CNC candidate in the strict draft without claiming machining checks", async () => {
+    const cnc = { ...spec, use: "CNC-machined desk ornament", process: "cnc_candidate" as const };
+    const createResponse = vi.fn().mockResolvedValue(response(cnc));
+    const result = await createDesignIntelligence({ createResponse }).designSpec({ description: "Create a cat relief for CNC machining", use: cnc.use, targetHeightMm: 120 });
+    expect(result).toEqual(cnc);
+    const request = createResponse.mock.calls[0][0];
+    expect(request.text.format).toMatchObject({ type: "json_schema", strict: true, schema: { additionalProperties: false, properties: { process: { enum: ["resin_candidate", "fdm_candidate", "cnc_candidate"] } } } });
+    expect(request.input[0].content).toContain("Choose cnc_candidate for explicit CNC or machining use");
+    expect(request.input[0].content).toContain("Do not claim tool access, CAM, undercuts or machining feasibility have been verified");
+    expect(createResponse).toHaveBeenCalledTimes(1);
+  });
+
   it("does not repair or retry an invalid or incomplete paid answer and records its usage", async () => {
     const createResponse = vi.fn().mockResolvedValue({ ...response({}), status: "incomplete" });
     const onResponse = vi.fn();

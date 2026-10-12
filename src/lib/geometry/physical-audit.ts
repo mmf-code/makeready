@@ -23,7 +23,7 @@ export function toPhysicalAudit(
   count("duplicate_triangles", geometry.duplicateTriangleCount, 0, "Repeated unordered triples of welded vertex IDs.");
   count("connected_components", geometry.connectedComponentCount, 1, "Surface components connected by shared triangle edges; one connected figure expected.");
   count("unreferenced_vertices", geometry.unreferencedVertexCount, 0, "Declared primitive vertices not referenced by any triangle.");
-  const notChecked = ["wall_thickness", "self_intersections", "supports", "material_strength"];
+  const notChecked = [...new Set(["wall_thickness", "self_intersections", "supports", "material_strength", ...geometry.notChecked])];
   for (const id of notChecked) checks.push({ id, status: "not_checked", actual: null, threshold: null, method: "Not implemented.", limitation: "This property needs additional manufacturing analysis and has not been measured." });
   return {
     engineVersion: geometry.version, measuredBy: "server", inputSha256: hashes.source,

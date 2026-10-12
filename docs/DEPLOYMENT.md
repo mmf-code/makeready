@@ -47,7 +47,27 @@ Bootstrap syncs only access values, the preview origin, budget, and any complete
 
 ## Database setup and environment sync
 
-A Supabase service/secret key permits application API operations; **it cannot apply SQL migrations**. Automated DDL requires a scoped `SUPABASE_ACCESS_TOKEN` with project-settings read and database-write access. The script confirms the project ref from `SUPABASE_URL` against Management API project metadata and requires the exact MakeReady name. A direct PostgreSQL connection or the dedicated dashboard SQL editor is the alternative. [Supabase Management API](https://supabase.com/docs/reference/api/introduction)
+A Supabase service/secret key permits application API operations; **it cannot apply SQL migrations**. For this dedicated project, keep a direct PostgreSQL URL in local-only `SUPABASE_DB_URL` and use the guarded setup script below. No Management API token is needed for this path. The alternative Management API script requires a scoped `SUPABASE_ACCESS_TOKEN` with project-settings read and database-write access. [Supabase Management API](https://supabase.com/docs/reference/api/introduction)
+
+### Direct PostgreSQL setup
+
+```sh
+pnpm exec tsx scripts/setup-database.mts --check
+pnpm exec tsx scripts/setup-database.mts --apply --migrate
+pnpm exec tsx scripts/setup-database.mts --apply --cron
+```
+
+The script targets only project `gsarkjadpjftvhjrfsam`, verifies the pinned public Supabase CA and hostname, applies a transaction/advisory lock, and checks migration hashes. A matching migration is skipped. `--cron` installs the every-minute reconciler using named Vault secrets and the stable preview origin. It does not reapply migrations. A successful cron SQL run proves only queuing; verify the resulting HTTP status separately. Never deploy `SUPABASE_DB_URL` or `FAL_BILLING_KEY` to Vercel.
+
+After the schema and cron are verified, synchronize runtime secrets and deploy current source:
+
+```sh
+PREVIEW_APP_URL=https://makeready-preview-mmf-code.vercel.app pnpm exec tsx scripts/configure-deployment.mts --apply --environment=preview
+```
+
+Without a management token, set `SUPABASE_PROJECT_REF=gsarkjadpjftvhjrfsam` to assert the independently verified project ref. Environment sync then verifies server-key storage access; it does not claim an independent dashboard project-name lookup.
+
+### Management API alternative
 
 Read-only validation:
 

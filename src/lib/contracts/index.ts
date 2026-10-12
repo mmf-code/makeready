@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CONTRACT_VERSION = "1.0.0" as const;
+export const CONTRACT_VERSION = "1.1.0" as const;
 const Id = z.uuid();
 const Timestamp = z.iso.datetime();
 const Hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -15,7 +15,7 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export const DesignSpecSchema = z.object({
   description: z.string().min(1), objectType: z.string().min(1), use: z.string().min(1),
   targetHeightMm: z.number().positive().max(2000), preserve: z.array(z.string()),
-  changeable: z.array(z.string()), process: z.enum(["resin_candidate", "fdm_candidate"]),
+  changeable: z.array(z.string()), process: z.enum(["resin_candidate", "fdm_candidate", "cnc_candidate"]),
 });
 export type DesignSpec = z.infer<typeof DesignSpecSchema>;
 

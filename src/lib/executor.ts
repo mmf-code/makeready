@@ -164,7 +164,7 @@ export async function advanceJob(jobId: string): Promise<void> {
     }
     if (!row.payload.revisionId) await checkpoint({}, { revisionId: randomUUID(), revisionCreatedAt: new Date().toISOString() });
     if (!row.payload.revisionCreatedAt) await checkpoint({}, { revisionCreatedAt: new Date().toISOString() });
-    let spec = row.payload.spec ?? row.payload.parent?.spec;
+    let spec: DesignSpec | undefined = row.payload.spec ?? row.payload.parent?.spec;
     if (row.data.operation === "concept" && row.payload.sourceImage) {
       const input = StartDesignInputSchema.parse(row.payload.input);
       spec = DesignSpecSchema.parse({ description: input.prompt, objectType: "Reference object", use: input.use, targetHeightMm: input.heightMm, preserve: [], changeable: [], process: "resin_candidate" });
@@ -248,7 +248,7 @@ export async function advanceJob(jobId: string): Promise<void> {
     }
     if (!source || source.sessionId !== row.session_id) throw new AppError("INVALID_ARTIFACT", "This job has no verified source geometry.", 422);
     await checkpoint({ status: "preparing", progress: 70, error: null });
-    const model: PreparedModel = await prepareModel({ source: await readArtifact(source), targetHeightMm: spec.targetHeightMm });
+    const model: PreparedModel = await prepareModel({ source: await readArtifact(source), targetHeightMm: spec.targetHeightMm, process: spec.process });
     const normalized = await storeOnce("modelGlbArtifact", "model_glb", model.glb, "model/gltf-binary", "glb", "m", "y_up");
     const stl = await storeOnce("stlArtifact", "model_stl", model.stl, "model/stl", "stl", "mm", "z_up");
     if (source.sha256 !== model.hashes.source || normalized.sha256 !== model.hashes.glb || stl.sha256 !== model.hashes.stl) {

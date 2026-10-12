@@ -50,6 +50,24 @@ function reloadedBounds(document: Document) {
 }
 
 describe("server GLB preparation", () => {
+  it("keeps CNC suitability unverified even when a real mesh passes the implemented topology checks", async () => {
+    const { document } = boxDocument(true);
+    const result = await prepareModel({ source: await encoded(document), targetHeightMm: 12, process: "cnc_candidate" });
+    expect(result.bounds.height).toBeCloseTo(12, 3);
+    expect(result.geometryAudit.status).toBe("pass");
+    expect(result.audit.manufacturingStatus).toBe("preparation_only");
+    for (const id of ["cnc_tool_access", "cnc_undercuts", "cnc_stock_fixturing", "cnc_toolpaths"]) {
+      expect(result.audit.checks.find((check) => check.id === id)).toMatchObject({ status: "not_checked", actual: null });
+      expect(result.audit.notChecked).toContain(id);
+    }
+    const zip = await JSZip.loadAsync(await makePackage(result));
+    const readme = await zip.file("README.md")!.async("string");
+    expect(readme).toContain("CNC candidate only");
+    expect(readme).toContain("no toolpaths or machining verification are included");
+    expect(readme).toContain("cnc_tool_access");
+    expect(await zip.file("source.glb")!.async("uint8array")).toEqual(result.source);
+  });
+
   it("honors nested world transforms and preserves millimeter dimensions in an actual STL round trip", async () => {
     const { document, node, scene } = boxDocument();
     scene.removeChild(node);

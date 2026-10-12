@@ -1,6 +1,8 @@
-# MakeReady frontend contract v1.0.0
+# MakeReady frontend contract v1.1.0
 
 Source of truth: `@/lib/contracts`. Fixtures: `@/lib/contracts/fixtures` (DEV ONLY; visibly label `FIXTURE_LABEL`). Never show fixtures as generated results. `@/lib/contracts/mcp` defines MCP inputs and typed `structuredContent`.
+
+v1.1 adds `DesignSpec.process = "cnc_candidate"` alongside the two printing candidates. Display it as “CNC candidate”. This records intent, not machining certification: cutter access, undercuts, stock/fixturing and CAM/toolpaths are explicit `not_checked` audit entries. Only height is constrained during uniform scaling; width/depth remain measured outputs and may differ from the prompt.
 
 ## Ownership and bootstrap
 

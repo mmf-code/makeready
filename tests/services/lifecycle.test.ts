@@ -59,7 +59,12 @@ describe("application lifecycle against the actual migration", () => {
       try {
         const result = await db.query(sql, values);
         // PostgREST transports timestamps as JSON strings, while PGlite returns Date.
-        return { data: mode !== "select" && !returning ? null : JSON.parse(JSON.stringify(result.rows)) as Row[], error: null };
+        const data = JSON.parse(JSON.stringify(result.rows)) as Row[];
+        for (const row of data) {
+          // Match the actual PostgREST timestamptz wire format, including offset.
+          if (typeof row.updated_at === "string") row.updated_at = row.updated_at.replace("Z", "+00:00");
+        }
+        return { data: mode !== "select" && !returning ? null : data, error: null };
       } catch (error) {
         const failure = error as { code?: string; message: string };
         return { data: null, error: { code: failure.code, message: failure.message } };
@@ -140,6 +145,15 @@ describe("application lifecycle against the actual migration", () => {
     await db.query("insert into public.design_records(id,session_id,kind,data) values($1,$2,'plan',$3)",[plan.id,plan.sessionId,plan]); return plan;
   }
   const initialInput = () => ({ prompt: "A small fox", confirmCost: true as const, idempotencyKey: randomUUID(), heightMm: 120, use: "Figurine" });
+
+  it("reloads the session tree when PostgREST returns an offset timestamp", async () => {
+    const services = createServices(scope);
+    const created = await services.createSession({ title: "Reload after refresh" });
+    const restored = await services.getSession(created.id);
+    expect(restored).toMatchObject({ id: created.id, title: created.title, revisions: [], jobs: [] });
+    expect(restored.updatedAt).toMatch(/Z$/);
+    expect(Number.isFinite(Date.parse(restored.updatedAt))).toBe(true);
+  });
 
   it("deduplicates concurrent first submissions into one session, job and budget reservation", async () => {
     const input = initialInput(), services = createServices(scope);

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { NodeIO, type Document, type Node } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
+import type { DesignSpec } from "../contracts";
 import { boundsOf, inspectGeometry } from "./inspect";
 import { binaryStl } from "./stl";
 import { toPhysicalAudit } from "./physical-audit";
@@ -158,7 +159,7 @@ function trianglesOf(document: Document, multiplier: number): TriangleSoup {
   return { positions, sourceVertexCount, unreferencedVertexCount };
 }
 
-export async function prepareModel(input: { source: Uint8Array; targetHeightMm: number }): Promise<PreparedModel> {
+export async function prepareModel(input: { source: Uint8Array; targetHeightMm: number; process?: DesignSpec["process"] }): Promise<PreparedModel> {
   if (!Number.isFinite(input.targetHeightMm) || input.targetHeightMm <= 0 || input.targetHeightMm > 10_000) {
     fail("INVALID_TARGET_HEIGHT", "Target height must be greater than zero and at most 10,000 millimeters.");
   }
@@ -186,6 +187,9 @@ export async function prepareModel(input: { source: Uint8Array; targetHeightMm: 
 
   const physicalTriangles = trianglesOf(document, 1000);
   const geometryAudit = inspectGeometry(physicalTriangles, input.targetHeightMm);
+  if (input.process === "cnc_candidate") {
+    geometryAudit.notChecked.push("cnc_tool_access", "cnc_undercuts", "cnc_stock_fixturing", "cnc_toolpaths");
+  }
   const stl = binaryStl(physicalTriangles.positions);
   const sourceTextureHashes = document.getRoot().listTextures().map((texture) => {
     const image = texture.getImage();

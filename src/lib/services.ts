@@ -73,7 +73,10 @@ export function createServices(scopeId="demo") {
       return {...rev,artifacts:await Promise.all(rev.artifacts.map(signedArtifact))};
     }));
     const byKind=(kind:string)=>records.filter(r=>r.kind===kind).map(r=>r.data);
-    return DesignSessionSchema.parse({...row.data,updatedAt:row.updated_at,spec:revisions.at(-1)?.spec||row.data.spec,revisions,jobs:jobs.map(j=>j.data),plans:byKind("plan"),evaluations:byKind("evaluation"),comparisons:byKind("comparison"),decisions:byKind("decision")});
+    const evaluations=byKind("evaluation");
+    const notChecked=[...new Set([...row.data.notChecked,...evaluations.flatMap(e=>e.kind==="physical"?e.audit.notChecked:[])])];
+    // PostgREST returns timestamptz with a numeric offset; public contracts use UTC Z.
+    return DesignSessionSchema.parse({...row.data,updatedAt:new Date(row.updated_at).toISOString(),spec:revisions.at(-1)?.spec||row.data.spec,revisions,jobs:jobs.map(j=>j.data),plans:byKind("plan"),evaluations,comparisons:byKind("comparison"),decisions:byKind("decision"),notChecked});
   }
   async function existingJob(key:string,input:unknown) {
     const {data,error}=await getDb().from("generation_jobs").select("data,input_hash").eq("scope",scopeId).eq("idempotency_key",key).maybeSingle();
