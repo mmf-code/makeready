@@ -61,6 +61,7 @@ async function main() {
   if (supabaseUrl.protocol !== "https:" || !/^[a-z]{20}\.supabase\.co$/.test(supabaseUrl.hostname) || supabaseUrl.username || supabaseUrl.password || supabaseUrl.pathname !== "/" || supabaseUrl.search || supabaseUrl.hash) fail("SUPABASE_URL must be the dedicated project's standard HTTPS URL.");
   const reference = supabaseUrl.hostname.split(".")[0];
   if (process.env.SUPABASE_PROJECT_REF && process.env.SUPABASE_PROJECT_REF !== reference) fail("SUPABASE_PROJECT_REF does not match SUPABASE_URL.");
+  await verifySupabaseServerAccess(supabaseUrl);
 
   const urls = new Map(targets.map((target) => {
     const configured = target === "production" ? process.env.PRODUCTION_APP_URL : process.env.PREVIEW_APP_URL ?? process.env.APP_URL;
@@ -108,6 +109,30 @@ async function main() {
 
 function validateAccessSecrets() {
   for (const key of ["SESSION_SECRET", "MCP_SECRET", "EXECUTOR_SECRET"]) if ((process.env[key]?.length ?? 0) < 32) fail(`${key} must contain at least 32 characters.`);
+}
+
+async function verifySupabaseServerAccess(url: URL) {
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  let serviceRole = false;
+  if (key.split(".").length === 3) {
+    try {
+      const claims = JSON.parse(Buffer.from(key.split(".")[1], "base64url").toString("utf8")) as { role?: unknown };
+      serviceRole = claims.role === "service_role";
+    } catch { /* The actual API request below verifies recognized credentials. */ }
+  }
+  if (!key.startsWith("sb_secret_") && !serviceRole) fail("SUPABASE_SECRET_KEY must be a secret API key or legacy service_role key, not the database password, publishable key, or management token.");
+  let response: Response;
+  try {
+    response = await fetch(new URL("/storage/v1/bucket?limit=1", url), {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch { fail("Supabase server credential verification could not reach Storage; no configuration was written."); }
+  if (!response.ok) fail(`Supabase rejected the server credential check with HTTP ${response.status}; no configuration was written. Response body suppressed.`);
+  let buckets: unknown;
+  try { buckets = await response.json(); } catch { fail("Supabase returned an unreadable bucket list; no configuration was written."); }
+  if (!Array.isArray(buckets)) fail("Supabase did not return the expected bucket list; no configuration was written.");
+  console.info("supabase_server_key: VERIFIED Storage access (no writes)");
 }
 
 function configuredBudget(): number {
