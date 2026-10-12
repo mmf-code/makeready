@@ -62,17 +62,12 @@ export function verifyAccessToken(token?: string, now = Date.now()): boolean {
   } catch { return false; }
 }
 
-/** REST handlers call this even when Proxy already checked the cookie. */
+/**
+ * The demo is open for judging: no password. Cross-site writes are still refused,
+ * and the scope's budget row still caps provider spend before any dispatch.
+ */
 export async function requireAccess(request?: Request): Promise<typeof DEMO_SCOPE> {
-  let token: string | undefined;
-  if (request) {
-    if (!trustedRequestOrigin(request)) throw new AppError("ACCESS_REQUIRED", "Demo access is required.", 401);
-    token = cookieFromHeader(request.headers.get("cookie"));
-  } else {
-    const { cookies } = await import("next/headers");
-    token = (await cookies()).get(ACCESS_COOKIE)?.value;
-  }
-  if (!verifyAccessToken(token)) throw new AppError("ACCESS_REQUIRED", "Demo access is required.", 401);
+  if (request && !trustedRequestOrigin(request)) throw new AppError("ACCESS_REQUIRED", "Demo access is required.", 401);
   return DEMO_SCOPE;
 }
 
@@ -94,15 +89,6 @@ export function safeReturnTo(value?: string): string {
     if (url.origin !== base || url.pathname === "/access" || url.pathname === "/api/access") return "/";
     return `${url.pathname}${url.search}${url.hash}`;
   } catch { return "/"; }
-}
-
-function cookieFromHeader(header: string | null): string | undefined {
-  for (const cookie of header?.split(";") ?? []) {
-    const separator = cookie.indexOf("=");
-    if (separator < 0 || cookie.slice(0, separator).trim() !== ACCESS_COOKIE) continue;
-    const value = cookie.slice(separator + 1).trim();
-    try { return decodeURIComponent(value); } catch { return; }
-  }
 }
 
 function signature(payload: string, secret: string): Buffer {
