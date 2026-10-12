@@ -33,6 +33,8 @@ export type EntryKind = "call" | "change" | "problem" | "human" | "running";
 export interface Entry {
   id: string; at: string; from: BuilderId; to: BuilderId; tool: string; args: string; result: string;
   kind: EntryKind; cost?: number; sandbox?: boolean;
+  /** Who actually answered: provider or model, its request id and how long it took. */
+  proof?: string;
 }
 export interface Station { state: StationState; task: string }
 
@@ -44,6 +46,19 @@ export const STATUS_WORDS: Record<GenerationJob["status"], string> = {
   created: "Starting", planning: "Planning", submitting: "Sending to the provider", submission_unknown: "Can't confirm it was sent",
   queued: "In line at the provider", running: "Generating", ingesting: "Saving the files", preparing: "Scaling and preparing",
   verifying: "Checking the files", completed: "Done", failed: "Failed",
+};
+
+const PROVIDER_WORDS: Record<NonNullable<GenerationJob["provider"]>, string> = { fal: "fal", meshy: "Meshy", openai: "LLM", local: "MakeReady server" };
+const shortId = (id: string) => (id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id);
+export const took = (job: GenerationJob) => {
+  if (isActive(job)) return "";
+  const s = Math.max(0, Math.round((Date.parse(job.updatedAt) - Date.parse(job.createdAt)) / 1000));
+  return s < 90 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+};
+const llmWord = (requestId: string | null) => (requestId?.startsWith("msg_") ? "Claude" : requestId?.startsWith("resp_") || requestId?.startsWith("chatcmpl") ? "OpenAI" : "LLM");
+export const jobProof = (job: GenerationJob) => {
+  const who = job.provider === "openai" ? llmWord(job.providerRequestId) : job.provider ? PROVIDER_WORDS[job.provider] : "";
+  return [who, job.providerRequestId && `req ${shortId(job.providerRequestId)}`, took(job) && `took ${took(job)}`].filter(Boolean).join(" · ");
 };
 
 export const ACTION_WORDS: Record<RevisionPlan["action"], string> = {
@@ -117,7 +132,7 @@ export function buildRunModel(session: DesignSession): RunModel {
 
   for (const job of jobs) {
     const made = job.result?.revisionId ? versionOf(job.result.revisionId) : "";
-    const base = { id: job.id, at: job.createdAt, kind: jobKind(job), cost: job.estimatedCostUsd };
+    const base = { id: job.id, at: job.createdAt, kind: jobKind(job), cost: job.estimatedCostUsd, proof: jobProof(job) };
     if (job.operation === "concept") {
       entries.push({ ...base, from: "foreman", to: "concept", tool: "concept.generate", args: `{ height_mm: ${spec.targetHeightMm}, use: "${spec.use}" }`, result: jobResult(job, `Concept ${made} saved.${job.result?.revisionId && visualFor(job.result.revisionId) ? " The look inspector compared it to the request." : " No visual check ran on it."}`) });
     } else if (job.operation === "refinement") {
@@ -138,23 +153,31 @@ export function buildRunModel(session: DesignSession): RunModel {
     }
   }
   for (const plan of plans) {
+    const planner = jobs.find((j) => j.operation === "planning" && j.result?.planId === plan.id);
     const keep = plan.preserve.length ? ` Keep: ${plan.preserve.join(", ")}.` : "";
     entries.push({
       id: plan.id, at: plan.createdAt, from: "foreman", to: "foreman", kind: "change", cost: plan.estimatedCostUsd,
       tool: "plan_refinement", args: `{ revision: "${versionOf(plan.parentRevisionId)}",\n  feedback: ${JSON.stringify(plan.requestedChange)} }`,
       result: `${coIndex.get(plan.id)}: ${plan.interpretedIntent}.${keep} ${ACTION_WORDS[plan.action]}.${executedPlanIds.has(plan.id) ? "" : " Not run yet."}`,
+      proof: planner ? jobProof(planner) : undefined,
     });
   }
+  // A revision's id and timestamp are reserved when its job starts. Checks on it happened when that job finished.
+  const doneAt = (rid: string, fallback: string) => {
+    const job = jobs.find((j) => j.id === revisions.find((r) => r.id === rid)?.sourceJobId);
+    return job && !isActive(job) ? job.updatedAt : fallback;
+  };
   for (const e of evaluations) {
     if (e.kind === "visual" && e.engine === "not_checked") {
-      entries.push({ id: e.id, at: e.createdAt, from: "foreman", to: "you", kind: "human", tool: "look.skipped", args: `{ revision: "${versionOf(e.revisionId)}" }`, result: "The look inspector did not compare this 3D model with the concept. Turn it around in the viewer and judge it yourself." });
+      entries.push({ id: e.id, at: doneAt(e.revisionId, e.createdAt), from: "foreman", to: "you", kind: "human", tool: "look.skipped", args: `{ revision: "${versionOf(e.revisionId)}" }`, result: "The look inspector did not compare this 3D model with the concept. Turn it around in the viewer and judge it yourself." });
     } else if (e.kind === "visual") {
-      entries.push({ id: e.id, at: e.createdAt, from: "foreman", to: "look", kind: "call", tool: "look.compare", args: `{ revision: "${versionOf(e.revisionId)}" }`, result: e.summary });
+      entries.push({ id: e.id, at: doneAt(e.revisionId, e.createdAt), from: "foreman", to: "look", kind: "call", tool: "look.compare", args: `{ revision: "${versionOf(e.revisionId)}" }`, result: e.summary, proof: `${e.engine} · vision` });
     } else if (e.kind === "physical") {
       const checks = e.audit.checks;
       const fail = checks.filter((c) => c.status === "fail").length;
       entries.push({
-        id: e.id, at: e.createdAt, from: "foreman", to: "shape", kind: fail ? "problem" : "call", tool: "shape.audit",
+        id: e.id, at: doneAt(e.revisionId, e.createdAt), from: "foreman", to: "shape", kind: fail ? "problem" : "call", tool: "shape.audit",
+        proof: `${e.engine} · ${e.audit.triangleCount.toLocaleString("en-US")} triangles · sha ${e.audit.outputSha256.stl.slice(0, 8)}`,
         args: `{ revision: "${versionOf(e.revisionId)}", target_height_mm: ${e.audit.targetHeightMm} }`,
         result: `${e.audit.measuredBoundsMm.height.toFixed(1)} mm tall. ${checks.filter((c) => c.status === "pass").length} passed, ${fail} failed, ${e.audit.notChecked.length} not checked.`,
       });
@@ -163,10 +186,11 @@ export function buildRunModel(session: DesignSession): RunModel {
   const lookedAt = new Set(evaluations.filter((e) => e.kind === "visual" && e.engine !== "not_checked").map((e) => e.id));
   for (const c of session.comparisons) {
     const args = `{ parent: "${versionOf(c.parentRevisionId)}", child: "${versionOf(c.childRevisionId)}" }`;
-    if (c.visualEvaluationIds.some((id) => lookedAt.has(id))) entries.push({ id: c.id, at: c.createdAt, from: "foreman", to: "look", kind: "call", tool: "look.compare", args, result: c.summary });
+    const at = doneAt(c.childRevisionId, c.createdAt);
+    if (c.visualEvaluationIds.some((id) => lookedAt.has(id))) entries.push({ id: c.id, at, from: "foreman", to: "look", kind: "call", tool: "look.compare", args, result: c.summary });
     if (c.acceptance?.length) {
       const missed = c.acceptance.filter((a) => a.status === "not_met").length;
-      entries.push({ id: `${c.id}:accept`, at: c.createdAt, from: "foreman", to: "shape", kind: missed ? "problem" : "call", tool: "shape.accept", args, result: c.acceptance.map(acceptanceLine).join(" ") });
+      entries.push({ id: `${c.id}:accept`, at, from: "foreman", to: "shape", kind: missed ? "problem" : "call", tool: "shape.accept", args, result: c.acceptance.map(acceptanceLine).join(" ") });
     }
   }
   for (const d of session.decisions) {

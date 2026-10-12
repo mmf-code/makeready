@@ -8,6 +8,7 @@ import type { DesignSession, MakePackageResult, Revision, RevisionPlan } from "@
 import { decideRevision, executePlan, generateModel, getMakePackage, getSession, MakeReadyClientError, planRevision } from "@/lib/client";
 import { explain } from "./explain";
 import { AcceptanceList, acceptanceFor } from "./acceptance";
+import { FixLoop } from "./fix-loop";
 import { Andon, Hat, Wordmark } from "./brand";
 import { Hamur } from "./hamur/hamur";
 import { ShapingLoader, WorkingBadge } from "./shaping-loader";
@@ -127,6 +128,7 @@ export function RunView({ sessionId, fixture, fixtureLabel }: { sessionId: strin
       </section>
 
       <NextStep session={session} model={model} refresh={refresh} sandbox={sandbox} />
+      <FixLoop session={session} model={model} />
       <ProductionLine stations={stations} tokenAt={tokenAt} sandboxStarted={sandbox.started} sandboxFinished={sandbox.finished} />
     </div>
   );
@@ -203,6 +205,7 @@ function CallRow({ entry: e, fresh }: { entry: Entry; fresh: boolean }) {
       </div>
       <code className="font-mono text-xs leading-normal break-words whitespace-pre-wrap">{e.tool}({e.args})</code>
       <p className="m-0 text-[13px] text-ink-2">{e.result}</p>
+      {e.proof && <p className="m-0 font-mono text-[11px] text-ink-2 break-all">{e.proof}</p>}
       {(e.kind === "change" || e.kind === "problem" || e.kind === "running" || e.cost || e.sandbox) && (
         <div className="flex flex-wrap gap-1.5">
           {e.kind === "change" && <Tag className="border-black bg-tape text-black">Change order</Tag>}

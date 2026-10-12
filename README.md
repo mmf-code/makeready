@@ -1,69 +1,110 @@
-# MakeReady — Design, Critique, Refine, Make
+<p align="center"><img src="public/hamur.svg" width="128" alt="Hamur, the MakeReady mascot"></p>
 
-Independent hackathon application built from scratch on 12 October 2026. Web and MCP expose one application service and one durable project tree. No CrafThinkERA or EVRE source code, prompts, commercial data or assets were copied. The handoff archive was read as historical requirements; the newer architecture and ownership decisions take precedence.
+# MakeReady
 
-## Run
+One message in, a printable 3D model out.
+
+You type "a baby chick, 70 mm tall, I want to paint it". A small crew of agents takes it from there. One writes the spec, one draws it, one looks at the drawing, one turns it into a mesh, one measures the mesh, one scales and packs it. You stay in the loop for the two calls a machine should not make alone: which drawing is right, and when to spend money on 3D.
+
+This was built in one day for a hackathon (12 October 2026). The digital half is real: real model calls, real files, real measurements. The physical half (print shop, painter, line QA, courier) is a sandbox, and the UI labels it as one.
+
+## what actually happens
+
+```
+"a baby chick, 70 mm"
+   │
+   ├─ Foreman ─────────── LLM writes a spec: object, use, height, what must stay the same
+   ├─ Concept agent ───── fal (nano-banana) draws it
+   ├─ Look inspector ──── LLM vision compares the drawing with the request
+   │
+   ├─ you: approve, or send it back with words ("bigger beak, keep the eyes")
+   │     └─ Foreman writes a change order: intent, keep-list, action, measurable checks
+   │        └─ Concept agent edits, v1 stays, v2 is new
+   │           └─ Look inspector compares v1 and v2
+   │
+   ├─ Geometry agent ──── fal Hunyuan3D v3 (or Meshy 7.1): image to mesh
+   ├─ Prep agent ──────── scale to height, center, ground at Y=0, GLB + STL + zip
+   ├─ Shape inspector ─── bounds, welding, open/non-manifold edges, winding, degenerate tris
+   ├─ acceptance ──────── every size you asked for vs. the measured bounds: met / not met
+   │
+   └─ sandbox makers ──── quote, print, paint, QA, courier (scripted, labeled)
+```
+
+Every arrow is a tool call. The run page shows each call with who made it, who answered, the provider request id and how long it took. The "Caught and fixed" panel strings one change order together: what was wrong, the plan, the fix, and the check that ran on the fix.
+
+## the crew, honestly
+
+| agent | real? | what it is |
+|---|---|---|
+| Foreman | yes | LLM spec and change-order writer. The orchestration around it is plain code. |
+| Concept agent | yes | fal image generation and editing. An uploaded photo can be the concept directly. |
+| Look inspector | yes, for drawings | LLM vision on concept images. With `ENABLE_MODEL_VISUAL_CRITIQUE=true` it also looks at the provider's preview render of the mesh. That is a picture of the mesh, not a measurement. |
+| Geometry agent | yes | fal Hunyuan3D v3, or Meshy 7.1 if you pick it. No silent fallback between them. |
+| Shape inspector | yes | Deterministic code on the decoded triangles. No LLM. |
+| Prep agent | yes | Scaling, grounding, GLB/STL/zip. It does not repair meshes. |
+| Print Studio, Elif, Line QA, Courier | no | A timed sandbox script. Quotes, prints and deliveries are made up and marked `sandbox`. |
+
+## quick start
 
 ```sh
 pnpm install --frozen-lockfile
-cp .env.example .env.local
-# Fill server credentials and random access/session/MCP/executor secrets.
+cp .env.example .env.local   # fal key, LLM key, Supabase project, a few random secrets
 pnpm dev
 ```
 
-Use a dedicated MakeReady Supabase project. Apply `supabase/migrations/202610120001_makeready.sql` and configure `supabase/setup-reconciliation.sql`. See [deployment](docs/DEPLOYMENT.md), [persistence](docs/PERSISTENCE.md) and the [frontend contract](docs/FRONTEND_CONTRACT.md).
+You need a Supabase project of its own. Apply `supabase/migrations/*.sql`, then `supabase/setup-reconciliation.sql` so a cron job keeps paid work moving when nobody has the page open. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) has the long version.
 
-Claude develops the frontend in the same working tree. Codex owns the backend, typed client, geometry, tests and deployment. `src/lib/utils.ts` is the explicit shadcn exception. Provider keys remain server-side.
-
-## Workflow
-
-1. Create a session. Optionally upload an image directly to private storage and verify the stored file.
-2. Start a durable concept job. Text input uses a configured LLM and fal to create an actual image. An uploaded photo becomes the initial concept with a specification from the user's prompt, purpose and height, without an LLM call.
-3. Save an observable change/preserve/action/reason plan from feedback. Execution uses that exact plan and a stable idempotency key.
-4. Approve an exact concept revision, then start real fal Hunyuan3D generation.
-5. A leased server executor polls, ingests original bytes, prepares geometry, audits and packages real files. A manufacturing revision is committed only after its artifacts exist and are verified.
-6. Read the full session tree to restore the timeline after reconnecting. Read routes never submit or advance paid work.
-
-## Durable paid jobs
-
-- Jobs are separate from immutable revisions. Request IDs, ambiguity, polling, per-artifact checkpoints, leases and fenced writes live in job records.
-- A database transaction reserves a cost allowance before dispatch. Idempotency binds one input fingerprint to one job.
-- `submission_unknown` is an intentional hold. Ambiguous paid submissions are never automatically resubmitted.
-- Cost allowances are conservative application accounting, not provider invoices. Received LLM response IDs and token usage are recorded. Provider account limits are separate.
-- One generation attempt is currently made per execution, within the two-attempt ceiling per feedback. No automatic second-candidate loop is implemented. Polling is separate from generation attempts.
-- Verified fal webhooks accelerate completion. Supabase Cron reconciles without an open browser. Next.js `after()` reduces latency but is not the durability mechanism. The cron must actually be installed for autonomous progress.
-
-## Geometry and files
-
-- `source.glb`: exact original provider bytes.
-- `normalized.glb`: decoded scene wrapped with uniform scale and translation. Textures/materials are retained while glTF is reserialized; this file is not byte-identical to the original.
-- The object is centered in X/Z, grounded at Y=0 and scaled to target height. GLB uses **meters, Y-up**.
-- Binary `model.stl` uses the same world-space triangles converted to **millimeters, Z-up** (`x, -z, y`). STL has geometry only and no unit metadata.
-- ZIP includes both GLBs, STL, public/detailed audits, manifest and production notes.
-- Implemented checks cover bounds, positional welding, boundary/nonmanifold edges, vertex fans, winding, degenerate/duplicate triangles, components and unused vertices. Wall thickness, self-intersections, supports and strength remain visibly `not_checked`.
-- Parseable geometry with failed physical checks can become a revision for further critique. Missing, corrupted or unsupported artifacts stop finalization.
-- No printability certification, regional feature percentage, physical order or maker acceptance is claimed. Files have a 50 MB demo storage limit.
-
-## Evaluations
-
-Visual, deterministic physical and human evaluations remain separate, without a combined score. Image critique cannot certify 3D fidelity. Comparisons preserve parent/child lineage, actual measured differences, visual observations and limitations. The UI uses matched front/side/three-quarter camera presets; automated multi-angle render comparison is not implemented. Bounding-box changes do not prove that ears shrank or a face was preserved.
-
-Photo → approval → 3D → Make Package works without LLM billing. Text creation and feedback planning need configured LLM access. Model-preview visual critique is optional and defaults off; enable it explicitly with `ENABLE_MODEL_VISUAL_CRITIQUE=true`. A skipped visual check remains visible as not checked.
-
-## MCP App
-
-Seven typed tools use Streamable HTTP at `/api/mcp/<MCP_SECRET>`. Paid tools require `confirm_cost: true` and an idempotency key. This demo uses a long random secret path; OAuth is not implemented. Keep the connector URL private.
-
-Claude owns `src/components/mcp-view/entry.tsx` and its host bridge. `pnpm build:mcp-view` bundles the actual entry and Tailwind into a self-contained hashed resource. Without an entry, tools work but no pretend View is advertised. A ChatGPT host connection needs live verification independently of local protocol tests.
-
-## Verify
+To drive a real run from the terminal (this spends money):
 
 ```sh
-pnpm typecheck
-pnpm test
-pnpm build:mcp-view
-pnpm build
-MAKEREADY_E2E_BASE_URL=http://127.0.0.1:3000 pnpm test:e2e
+pnpm exec tsx --env-file=.env.local scripts/generate-live.mts \
+  --text --prompt "A round baby chick figurine" --height-mm 70 \
+  --feedback "Bigger beak, keep the eyes" --confirm-cost
 ```
 
-Geometry tests parse/export real GLB/STL bytes. Provider tests mock network boundaries; they do not prove live generation. HTTP acceptance tests use a real running application; authenticated persistence needs configured Supabase. Fixtures are Zod-validated development data and must be visibly labeled outside the real flow.
+## the parts that keep it sane
+
+- **Paid work is a job, not a request.** Jobs live in Postgres with leases, fenced writes and per-step checkpoints. A crashed function picks up where it stopped.
+- **Idempotency everywhere.** One input fingerprint maps to one job. If a submission's fate is unknown, the job stops in `submission_unknown` and is never resent on its own.
+- **A budget row, checked in a transaction** before anything is dispatched. Estimates, not invoices.
+- **Versions are immutable.** A change order makes v2 next to v1. Approvals bind to exact file hashes.
+- **Three kinds of evaluation, never blended into one score:** visual (LLM), physical (code), human (you).
+
+## units, because someone will ask
+
+- `normalized.glb`: meters, Y-up, grounded at Y=0, centered in X/Z.
+- `model.stl`: millimeters, Z-up, same triangles. STL has no unit field, so the manifest says it.
+- `source.glb`: the provider's original bytes, untouched.
+
+## ChatGPT / MCP
+
+Seven tools over Streamable HTTP at `/api/mcp/<MCP_SECRET>`: `start_design`, `get_design`, `plan_refinement`, `apply_refinement`, `decide_revision`, `generate_model`, `get_make_package`. Paid tools require `confirm_cost: true` and an idempotency key. Same service, same session tree as the web app, so a run started in ChatGPT shows up live on the run page.
+
+## not done
+
+- The look inspector does not render the mesh from matched angles and compare it with the concept yet. Today it is a provider preview at best.
+- A failed size check does not trigger an automatic second attempt. The Foreman plans, a person runs it.
+- No wall thickness, self-intersection, support or strength analysis. Those show as `not_checked`, on purpose.
+- Nothing here certifies that a part will print.
+
+## layout
+
+```
+src/app/            pages and API routes (Next.js App Router)
+src/components/     run page, work cell (three.js), the Hamur mascot
+src/lib/            providers, executor, geometry, harness, contracts, MCP server
+supabase/           migrations and the reconciliation cron
+scripts/            live run, deployment and database setup
+tests/              vitest + playwright
+```
+
+## tests
+
+```sh
+pnpm test        # unit and integration, providers mocked at the network edge
+pnpm test:e2e    # against a running app
+```
+
+Geometry tests parse and export real GLB/STL bytes. Provider tests do not prove live generation; `scripts/generate-live.mts` does.
+
+Built from scratch for the hackathon. No code, prompts or assets from other projects.
