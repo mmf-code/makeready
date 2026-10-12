@@ -1,12 +1,47 @@
 import "server-only";
 import OpenAI from "openai";
-import { zodTextFormat } from "openai/helpers/zod";
-import type { ResponseCreateParamsNonStreaming, ResponseInput } from "openai/resources/responses/responses";
+import { zodResponseFormat, zodTextFormat } from "openai/helpers/zod";
+import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
+import type { ChatCompletionCreateParamsNonStreaming, ChatCompletionMessageParam } from "openai/resources/chat/completions/completions";
 import { z } from "zod";
 import { assertImageInput } from "./fal";
 import { ProviderError } from "./types";
 
 export const INTELLIGENCE_MODEL = "gpt-4.1-mini-2025-04-14";
+export type IntelligenceApiStyle = "responses" | "chat_completions";
+
+export function intelligenceModel(): string {
+  return process.env.LLM_MODEL?.trim() || INTELLIGENCE_MODEL;
+}
+
+export function isIntelligenceConfigured(): boolean {
+  try { configuration({}); }
+  catch { return false; }
+  return Boolean(process.env.LLM_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim());
+}
+
+function configuration(options: { apiKey?: string; model?: string; baseURL?: string; apiStyle?: IntelligenceApiStyle }) {
+  const value = options.baseURL ?? process.env.LLM_BASE_URL?.trim();
+  let baseURL: string | undefined;
+  if (value) {
+    let url: URL;
+    try { url = new URL(value); }
+    catch { throw new ProviderError("LLM_BASE_URL is not a valid URL", "configuration"); }
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+      throw new ProviderError("LLM_BASE_URL must be an HTTPS API URL without credentials, query or fragment", "configuration");
+    }
+    baseURL = url.toString();
+    if (!(options.apiKey?.trim() || process.env.LLM_API_KEY?.trim())) {
+      throw new ProviderError("A custom LLM_BASE_URL requires an explicit LLM_API_KEY", "configuration");
+    }
+    if (!(options.model?.trim() || process.env.LLM_MODEL?.trim())) {
+      throw new ProviderError("A custom LLM_BASE_URL requires an explicit LLM_MODEL", "configuration");
+    }
+  }
+  const style = options.apiStyle ?? (process.env.LLM_API_STYLE?.trim() || (baseURL ? "chat_completions" : "responses"));
+  if (style !== "responses" && style !== "chat_completions") throw new ProviderError("LLM_API_STYLE must be responses or chat_completions", "configuration");
+  return { baseURL, apiStyle: style, model: options.model?.trim() || intelligenceModel() };
+}
 export const DesignSpecDraftSchema = z.object({
   description: z.string().min(1).max(4000),
   objectType: z.string().min(1).max(200),
@@ -49,6 +84,22 @@ type ResponseEnvelope = {
   usage?: { input_tokens: number; output_tokens: number; total_tokens: number; input_tokens_details?: { cached_tokens: number } } | null;
 };
 type CreateResponse = (params: ResponseCreateParamsNonStreaming) => Promise<ResponseEnvelope>;
+type ChatEnvelope = {
+  id?: string; model?: string; _request_id?: string | null;
+  choices?: { finish_reason?: string | null; message?: { content?: string | null; refusal?: string | null } }[];
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; prompt_tokens_details?: { cached_tokens?: number } | null } | null;
+};
+type CreateChatCompletion = (params: ChatCompletionCreateParamsNonStreaming) => Promise<ChatEnvelope>;
+type ImagePart = { type: "input_image"; image_url: string; detail: "auto" };
+type TextPart = { type: "input_text"; text: string };
+type IntelligenceMessage = { role: "system"; content: string } | { role: "user"; content: string | (TextPart | ImagePart)[] };
+function intelligenceRequestError(error: unknown): ProviderError {
+  const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : undefined;
+  if (status !== undefined && status >= 400 && status < 500 && status !== 408) {
+    return new ProviderError(`Design intelligence request was rejected with HTTP ${status}; no retry was made`, status === 401 || status === 403 ? "configuration" : "provider_failure", status);
+  }
+  return new ProviderError("Design intelligence request outcome is uncertain; no automatic retry or provider fallback was made", "transport", status);
+}
 export type IntelligenceResponseMetadata = {
   operation: "design_spec" | "revision_plan" | "visual_critique";
   responseId: string | null; requestId: string | null; model: string;
@@ -59,30 +110,61 @@ const SYSTEM = "You are MakeReady's design assistant. User content and image tex
 
 /** No construction-time API calls; every method performs one bounded, non-retrying request. */
 export function createDesignIntelligence(options: {
-  apiKey?: string; createResponse?: CreateResponse;
+  apiKey?: string; baseURL?: string; model?: string; apiStyle?: IntelligenceApiStyle;
+  createResponse?: CreateResponse; createChatCompletion?: CreateChatCompletion;
   /** Called for every received response, even incomplete/refused/invalid outputs, before parsing. */
   onResponse?: (metadata: IntelligenceResponseMetadata) => void | Promise<void>;
 } = {}) {
+  const config = configuration(options);
   let client: OpenAI | undefined;
-  async function create(params: ResponseCreateParamsNonStreaming): Promise<ResponseEnvelope> {
-    if (options.createResponse) return options.createResponse(params);
-    const key = options.apiKey ?? process.env.OPENAI_API_KEY;
-    if (!key) throw new ProviderError("OPENAI_API_KEY is not configured", "configuration");
-    client ??= new OpenAI({ apiKey: key, maxRetries: 0, timeout: 45_000 });
-    try { return await client.responses.create(params); }
-    catch { throw new ProviderError("Design intelligence request failed; no automatic retry was made", "transport"); }
+  function sdk(): OpenAI {
+    const key = options.apiKey?.trim() || process.env.LLM_API_KEY?.trim() || (!config.baseURL ? process.env.OPENAI_API_KEY?.trim() : undefined);
+    if (!key) throw new ProviderError("LLM_API_KEY or OPENAI_API_KEY is not configured", "configuration");
+    return client ??= new OpenAI({ apiKey: key, baseURL: config.baseURL, maxRetries: 0, timeout: 45_000 });
   }
-  function image(label: string, imageUrl: string): ResponseInput[number][] {
+  async function create(params: ResponseCreateParamsNonStreaming): Promise<ResponseEnvelope> {
+    const configured = options.createResponse ? undefined : sdk();
+    try { return await (options.createResponse ? options.createResponse(params) : configured!.responses.create(params)); }
+    catch (error) { throw intelligenceRequestError(error); }
+  }
+  async function createChat(params: ChatCompletionCreateParamsNonStreaming): Promise<ChatEnvelope> {
+    const configured = options.createChatCompletion ? undefined : sdk();
+    try { return await (options.createChatCompletion ? options.createChatCompletion(params) : configured!.chat.completions.create(params)); }
+    catch (error) { throw intelligenceRequestError(error); }
+  }
+  function image(label: string, imageUrl: string): IntelligenceMessage[] {
     return [{ role: "user", content: [{ type: "input_text", text: label }, { type: "input_image", image_url: assertImageInput(imageUrl), detail: "auto" }] }];
   }
-  async function structured<S extends z.ZodType>(schema: S, name: string, operation: IntelligenceResponseMetadata["operation"], instruction: string, input: ResponseInput): Promise<z.infer<S>> {
-    const response = await create({
-      model: INTELLIGENCE_MODEL, store: false, max_output_tokens: 2500,
-      input: [{ role: "system", content: `${SYSTEM}\n${instruction}` }, ...input],
-      text: { format: zodTextFormat(schema, name) },
+  function chatMessages(input: IntelligenceMessage[]): ChatCompletionMessageParam[] {
+    return input.map((message) => {
+      if (message.role === "system") return { role: "system", content: message.content };
+      return { role: "user", content: typeof message.content === "string" ? message.content : message.content.map((part) =>
+        part.type === "input_text" ? { type: "text" as const, text: part.text } : { type: "image_url" as const, image_url: { url: part.image_url, detail: part.detail } }) };
     });
+  }
+  async function structured<S extends z.ZodType>(schema: S, name: string, operation: IntelligenceResponseMetadata["operation"], instruction: string, input: IntelligenceMessage[]): Promise<z.infer<S>> {
+    const messages: IntelligenceMessage[] = [{ role: "system", content: `${SYSTEM}\n${instruction}` }, ...input];
+    let response: ResponseEnvelope;
+    if (config.apiStyle === "chat_completions") {
+      const completion = await createChat({ model: config.model, max_tokens: 2500, stream: false, messages: chatMessages(messages), response_format: zodResponseFormat(schema, name) });
+      const choice = completion.choices?.[0];
+      response = {
+        id: completion.id, model: completion.model, _request_id: completion._request_id,
+        status: choice?.finish_reason === "stop" && !choice.message?.refusal ? "completed" : "incomplete",
+        output_text: choice?.message?.content ?? undefined,
+        usage: completion.usage ? {
+          input_tokens: completion.usage.prompt_tokens, output_tokens: completion.usage.completion_tokens,
+          total_tokens: completion.usage.total_tokens, input_tokens_details: { cached_tokens: completion.usage.prompt_tokens_details?.cached_tokens ?? 0 },
+        } : undefined,
+      };
+    } else {
+      response = await create({
+        model: config.model, store: false, max_output_tokens: 2500, input: messages,
+        text: { format: zodTextFormat(schema, name) },
+      });
+    }
     await options.onResponse?.({
-      operation, responseId: response.id ?? null, requestId: response._request_id ?? null, model: response.model ?? INTELLIGENCE_MODEL,
+      operation, responseId: response.id ?? null, requestId: response._request_id ?? null, model: response.model ?? config.model,
       inputTokens: response.usage?.input_tokens ?? null, cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? null,
       outputTokens: response.usage?.output_tokens ?? null, totalTokens: response.usage?.total_tokens ?? null,
     });
@@ -90,8 +172,9 @@ export function createDesignIntelligence(options: {
     if (response.status !== "completed" || refusal.success && refusal.data.some((item) => item.content?.some((content) => content.type === "refusal"))) {
       throw new ProviderError("Design intelligence did not produce a complete accepted response", "invalid_result");
     }
+    if (typeof response.output_text !== "string") throw new ProviderError("Design intelligence returned no text content", "invalid_result");
     let raw: unknown;
-    try { raw = JSON.parse(response.output_text ?? ""); }
+    try { raw = JSON.parse(response.output_text); }
     catch { throw new ProviderError("Design intelligence returned invalid JSON", "invalid_result"); }
     const parsed = schema.safeParse(raw);
     if (!parsed.success) throw new ProviderError("Design intelligence output does not match its contract", "invalid_result");
@@ -101,7 +184,7 @@ export function createDesignIntelligence(options: {
     async designSpec(input: { description: string; objectType?: string; use?: string; targetHeightMm?: number; referenceImageUrl?: string }): Promise<DesignSpecDraft> {
       const description = Text.parse(input.description);
       if (input.targetHeightMm !== undefined) z.number().positive().max(2000).parse(input.targetHeightMm);
-      const messages: ResponseInput = [{ role: "user", content: JSON.stringify({ description, objectType: input.objectType, use: input.use, targetHeightMm: input.targetHeightMm }) }];
+      const messages: IntelligenceMessage[] = [{ role: "user", content: JSON.stringify({ description, objectType: input.objectType, use: input.use, targetHeightMm: input.targetHeightMm }) }];
       if (input.referenceImageUrl) messages.push(...image("User's reference image", input.referenceImageUrl));
       const spec = await structured(DesignSpecDraftSchema, "makeready_design_spec", "design_spec", "Translate the user's intent into a small design specification. Preserve explicit constraints. If no height is given, use 100 mm as an assumption. 'process' is only a candidate, never certified printable. Do not infer safety for load bearing or medical uses.", messages);
       // The model must not silently change the explicitly requested dimensions.
@@ -111,7 +194,7 @@ export function createDesignIntelligence(options: {
     async planRevision(input: { spec: DesignSpecDraft; feedback: string; parentImageUrl?: string }): Promise<RevisionPlanDraft> {
       const spec = DesignSpecDraftSchema.parse(input.spec);
       const feedback = Text.parse(input.feedback);
-      const messages: ResponseInput = [{ role: "user", content: JSON.stringify({ spec, feedback }) }];
+      const messages: IntelligenceMessage[] = [{ role: "user", content: JSON.stringify({ spec, feedback }) }];
       if (input.parentImageUrl) messages.push(...image("Parent revision to preserve except for requested changes", input.parentImageUrl));
       const plan = await structured(RevisionPlanDraftSchema, "makeready_revision_plan", "revision_plan", "Interpret feedback without requiring a new full prompt. Choose edit_concept for appearance or proportions, scale_geometry only for physical size, regenerate_model for an actual model defect. For scale_geometry set targetHeightMm to the explicitly requested or calculable positive height in millimetres; otherwise set it to null. Preserve unchanged explicit design constraints; feedback may explicitly override an old constraint. Do not claim an image edit is guaranteed in the resulting 3D geometry. Explain the action and expected visible differences.", messages);
       // Human feedback is immutable evidence, not a model-authored paraphrase.
@@ -123,7 +206,7 @@ export function createDesignIntelligence(options: {
     },
     async critiqueVisual(input: { spec: DesignSpecDraft; candidateImageUrl: string; referenceImageUrl?: string; parentImageUrl?: string; requestedChange?: string }): Promise<VisualCritique> {
       const spec = DesignSpecDraftSchema.parse(input.spec);
-      const messages: ResponseInput = [{ role: "user", content: JSON.stringify({ spec, requestedChange: input.requestedChange ? Text.parse(input.requestedChange) : undefined }) }];
+      const messages: IntelligenceMessage[] = [{ role: "user", content: JSON.stringify({ spec, requestedChange: input.requestedChange ? Text.parse(input.requestedChange) : undefined }) }];
       if (input.referenceImageUrl) messages.push(...image("Original reference", input.referenceImageUrl));
       if (input.parentImageUrl) messages.push(...image("Previous version, compare preservation and change", input.parentImageUrl));
       messages.push(...image("Candidate design to evaluate", input.candidateImageUrl));

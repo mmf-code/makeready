@@ -34,7 +34,7 @@ Dynamic path IDs must equal any IDs supplied in the body. Upload original images
 
 Normal statuses: `created → planning/submitting → queued → running → ingesting → preparing → verifying → completed`. Local/scale operations skip irrelevant stages. `submission_unknown` means paid dispatch may have happened: show uncertainty, preserve the job, never automatically regenerate. `failed` is a terminal confirmed failure. Polling network/429/5xx errors are temporary and do not mean provider failure.
 
-Preparation runs on the SERVER via fal webhook + scheduled reconciliation. NO `awaiting_preparation` and NO browser `resumePreparation`. Polling/getSession never starts paid generation. Closing the browser does not stop the job.
+Preparation runs on the SERVER via fal webhook + scheduled reconciliation. NO `awaiting_preparation` and NO browser `resumePreparation`. Polling/getSession never starts paid generation. Closing the browser does not stop the job when reconciliation is configured. A verified uploaded photo can become the initial concept without an LLM call; its user-specified description/height remain explicit and visual critique is `not_checked`. Text concepts and refinement planning need the configured LLM. Photo approval → fal model generation works independently of LLM billing.
 
 ## Refinement and evidence
 
@@ -97,7 +97,7 @@ Additional client errors to surface:
 
 ## MCP transport and widget bundle
 
-MCP tools use the frozen `@/lib/contracts/mcp` schema. `structuredContent` is `{result, notChecked}`; HTTP is `{data}`. Paid MCP inputs use `confirm_cost: true` and `idempotencyKey`. Planning is also a paid OpenAI call. Only `get_design` and `get_make_package` are read-only. Every result includes unimplemented checks and regional-measurement limitations.
+MCP tools use the frozen `@/lib/contracts/mcp` schema. `structuredContent` is `{result, notChecked}`; HTTP is `{data}`. Paid MCP inputs use `confirm_cost: true` and `idempotencyKey`. Planning is also a paid LLM call. Only `get_design` and `get_make_package` are read-only. Every result includes unimplemented checks and regional-measurement limitations. Alternative compatible LLM jobs use nullable provider metadata and retain their actual model/response receipts.
 
 Tool results `_meta["makeready/appUrl"]` provides the configured public web base URL for `app.openLink`; append the shared session ID to the web route agreed with Claude. Never derive the MCP secret URL in the widget. Resource CSP permits configured app/storage origins and Google Fonts hosts. If Claude's entry is missing, tools remain usable with typed/text outputs and advertise no pretend widget.
 

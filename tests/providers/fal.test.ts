@@ -44,6 +44,18 @@ describe("fal queue adapter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it.each([401, 422, 429])("classifies a rejected HTTP %s submission as known failure without retry", async (status) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("rejected", { status }));
+    await expect(createFalProvider({ apiKey: "mock-key", fetch: fetchMock }).submitConcept({ prompt: "A cat" })).rejects.toMatchObject({ kind: "provider_failure", httpStatus: status });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an HTTP 408 submission ambiguous and does not retry it", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("timeout", { status: 408 }));
+    await expect(createFalProvider({ apiKey: "mock-key", fetch: fetchMock }).submitConcept({ prompt: "A cat" })).rejects.toMatchObject({ kind: "submission_unknown", httpStatus: 408 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("creates no network request with missing credentials", async () => {
     vi.stubEnv("FAL_KEY", "");
     const fetchMock = vi.fn<typeof fetch>();

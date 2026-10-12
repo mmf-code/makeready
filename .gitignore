@@ -43,4 +43,5 @@ next-env.d.ts
 .terminalgraph/
 playwright-report/
 test-results/
+.playwright-mcp/
 !.env.example

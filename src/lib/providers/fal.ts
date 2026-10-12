@@ -72,7 +72,9 @@ export function createFalProvider(options: { apiKey?: string; fetch?: typeof fet
       throw new ProviderError(submission ? "Submission outcome is unknown; do not automatically submit again" : "Provider polling connection failed; job may still be running", submission ? "submission_unknown" : "transport");
     }
     if (!response.ok) {
-      throw new ProviderError(`fal request failed with HTTP ${response.status}`, submission && response.status >= 500 ? "submission_unknown" : result && [400, 422].includes(response.status) ? "provider_failure" : "transport", response.status);
+      const ambiguousSubmission = submission && (response.status >= 500 || response.status === 408);
+      const rejectedSubmission = submission && response.status >= 400 && response.status < 500 && response.status !== 408;
+      throw new ProviderError(`fal request failed with HTTP ${response.status}`, ambiguousSubmission ? "submission_unknown" : rejectedSubmission || result && [400, 422].includes(response.status) ? "provider_failure" : "transport", response.status);
     }
     return response;
   }
