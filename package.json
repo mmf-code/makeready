@@ -48,7 +48,7 @@
     "@electric-sql/pglite": "0.5.8",
     "@playwright/test": "^1.64.0",
     "@tailwindcss/cli": "^4.3.3",
-    "@tailwindcss/turbopack": "^4",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/draco3dgltf": "^1.4.3",
     "@types/node": "^24.19.2",
     "@types/react": "^19",

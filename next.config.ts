@@ -5,14 +5,6 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: { "/*": ["./node_modules/draco3dgltf/**/*"] },
   // Private session reads and Node-only preparation use ordinary dynamic routes.
   cacheComponents: false,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
 };
 
 export default nextConfig;
