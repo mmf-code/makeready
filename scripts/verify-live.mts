@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -83,6 +84,16 @@ async function main() {
   if (JSON.stringify(tools.map((tool) => tool.name).sort()) !== JSON.stringify(expected)) fail("mcp_tool_contract_mismatch");
   console.info(`mcp_tools: PASS ${tools.length}`);
 
+  step = "mcp_photo_contract";
+  const start = tools.find((tool) => tool.name === "start_design");
+  if (JSON.stringify(start?._meta?.["openai/fileParams"]) !== '["photo"]') fail("file_parameter_metadata_missing");
+  const photo = z.object({ properties: z.object({ photo: z.object({
+    properties: z.record(z.string(), z.unknown()), required: z.array(z.string()),
+  }) }) }).parse(start?.inputSchema).properties.photo;
+  if (!["download_url", "file_id", "mime_type", "file_name"].every((key) => key in photo.properties)
+    || JSON.stringify([...photo.required].sort()) !== '["download_url","file_id"]') fail("photo_input_schema_mismatch");
+  console.info("mcp_photo_contract: PASS (attachment download not exercised)");
+
   if (createdId) {
     step = "mcp_shared_session";
     const toolResult = z.object({ isError: z.boolean().optional(), structuredContent: McpToolOutputSchemas.get_design }).parse(await callMcp("tools/call", { name: "get_design", arguments: { sessionId: createdId } }));
@@ -96,6 +107,9 @@ async function main() {
     const uri = ui._meta!["openai/outputTemplate"] as string;
     const resource = z.object({ contents: z.array(z.object({ uri: z.string(), mimeType: z.string(), text: z.string() })) }).parse(await callMcp("resources/read", { uri }));
     if (!resource.contents.some((item) => item.uri === uri && item.mimeType === "text/html;profile=mcp-app" && item.text.includes("<script") && item.text.includes('id="root"'))) fail("mcp_view_resource_invalid");
+    const view = resource.contents.find((item) => item.uri === uri)!;
+    const digest = createHash("sha256").update(view.text).digest("hex");
+    if (uri !== `ui://makeready/view-${digest.slice(0, 12)}.html`) fail("mcp_view_hash_mismatch");
     console.info("mcp_view: PASS");
   } else {
     if (requireView) fail("mcp_view_missing");
