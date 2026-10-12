@@ -1,4 +1,4 @@
-# MakeReady frontend contract v1.2.0
+# MakeReady frontend contract v1.3.0
 
 Source of truth: `@/lib/contracts`. Fixtures: `@/lib/contracts/fixtures` (DEV ONLY; visibly label `FIXTURE_LABEL`). Never show fixtures as generated results. `@/lib/contracts/mcp` defines MCP inputs and typed `structuredContent`.
 
@@ -47,6 +47,8 @@ Call `planRevision()` first. Display `requestedChange`, `interpretedIntent`, `pr
 Visual, physical, human evaluations are separate cards. No combined score. Show every `not_checked` and limitation. Compare genuine parent/child models with identical front, side and three-quarter camera settings, orbit synchronized where possible. Height is normalized in both: bbox/triangle changes do not establish ear size or face preservation. Concept-only comparisons have `geometryDelta: null`.
 
 After `manufacturing → refined concept → manufacturing`, the new model has both its direct concept comparison and an additional comparison to the nearest earlier manufacturing ancestor. Revision lineage is unchanged. For a 3D-to-3D comparison choose the record with actual `geometryDelta` and load its two revision IDs. A camera preset is a requested presentation, not proof that automated matched renders ran. Planner failures can include finite `error.details.diagnosticCode` values; show them with the existing failed job, without resubmitting it.
+
+Since v1.3.0 a plan can carry `checks`: measurable size requirements (`height_mm`, `width_mm`, `depth_mm` with `<=`, `>=` or `=`). The planner proposes them, but code keeps a check only if its `quote` is a verbatim part of the human feedback and states the value; `rejectedCheckCount` counts the dropped ones. Code sets the tolerance (target: max(0.5 mm, 2 %); bound: 0.1 mm) and derives `targetHeightMm` from `action`. Each comparison of a child revision carries `acceptance`: the spec height check plus the checks of the plan behind it (for a 3D model, the plan that produced its parent concept), each `met`, `not_met` or `not_checked` with `actualMm` from the server audit. Without an audit every check stays `not_checked`; zero checks produce no result, never a pass. Only overall bounds are measured. Both fields are absent on records saved before v1.3.0.
 
 GLB preserves textures/materials and uses meters/Y-up. STL is geometry only in mm/Z-up. Use `model_glb` in the viewer, not STL. Source GLB is independently preserved; normalized GLB is reserialized. No printability certification.
 

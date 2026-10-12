@@ -7,6 +7,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { DesignSession, MakePackageResult, Revision, RevisionPlan } from "@/lib/contracts";
 import { decideRevision, executePlan, generateModel, getMakePackage, getSession, MakeReadyClientError, planRevision } from "@/lib/client";
 import { explain } from "./explain";
+import { AcceptanceList, acceptanceFor } from "./acceptance";
 import { Andon, Hat, Wordmark } from "./brand";
 import { Hamur, PAINT_ON_DARK } from "./hamur/hamur";
 import {
@@ -290,6 +291,7 @@ function Stage({ session, model, sandbox, selected, onSelect }: {
         <div>
           <h2 className="mr-heading text-[clamp(22px,2vw,28px)]">{label}</h2>
           <p className="mt-1 mb-0 max-w-[34em] text-sm text-stage-2 tabular-nums">{sub}</p>
+          {shown && !sandboxOn && <AcceptanceList results={acceptanceFor(session, shown.id)} />}
         </div>
         {active && !sandboxOn && (
           <span className="h-fit rounded-full border border-go px-3 py-1 text-[12.5px] whitespace-nowrap text-stage-ink">{STATUS_WORDS[active.status]}</span>

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CONTRACT_VERSION = "1.2.0" as const;
+export const CONTRACT_VERSION = "1.3.0" as const;
 const Id = z.uuid();
 const Timestamp = z.iso.datetime();
 const Hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -42,12 +42,28 @@ export const GenerationJobSchema = z.object({
 });
 export type GenerationJob = z.infer<typeof GenerationJobSchema>;
 
+/** A measurable requirement. Feedback checks quote the human text verbatim; tolerance is set by code. */
+export const AcceptanceCheckSchema = z.object({
+  id: z.string().min(1).max(80), metric: z.enum(["height_mm", "width_mm", "depth_mm"]),
+  op: z.enum(["<=", ">=", "="]), value: z.number().positive().max(10000), toleranceMm: z.number().nonnegative().max(200),
+  quote: z.string().min(1).max(500), source: z.enum(["feedback", "spec"]),
+});
+export type AcceptanceCheck = z.infer<typeof AcceptanceCheckSchema>;
+export const AcceptanceResultSchema = AcceptanceCheckSchema.extend({
+  planId: Id.nullable(), status: z.enum(["met", "not_met", "not_checked"]), actualMm: z.number().nullable(),
+  auditSha256: Hash.nullable(), method: z.string(),
+});
+export type AcceptanceResult = z.infer<typeof AcceptanceResultSchema>;
+
 export const RevisionPlanSchema = z.object({
   id: Id, sessionId: Id, parentRevisionId: Id, requestedChange: z.string().min(1),
   interpretedIntent: z.string().min(1), preserve: z.array(z.string()),
   action: z.enum(["edit_concept", "scale_geometry", "regenerate_model"]), reason: z.string().min(1),
   expectedDifferences: z.array(z.string()), targetHeightMm: z.number().positive().max(2000).nullable(),
   maxAttempts: z.literal(2), estimatedCostUsd: z.number().nonnegative(), createdAt: Timestamp,
+  /** Absent on plans saved before acceptance checks existed. */
+  checks: z.array(AcceptanceCheckSchema).max(8).optional(),
+  rejectedCheckCount: z.number().int().nonnegative().optional(),
 });
 export type RevisionPlan = z.infer<typeof RevisionPlanSchema>;
 
@@ -98,6 +114,8 @@ export const ComparisonSchema = z.object({
   differences: z.array(z.string()), preservationFindings: z.array(z.string()), limitations: z.array(z.string()),
   geometryDelta: z.object({ widthMm: z.number(), heightMm: z.number(), depthMm: z.number(), triangles: z.number().int(), boundaryEdges: z.number().int().nullable() }).nullable(),
   cameraPreset: z.literal("matched_front_side_three_quarter"), createdAt: Timestamp,
+  /** Per-requirement results for the child revision. Absent on comparisons saved before checks existed. */
+  acceptance: z.array(AcceptanceResultSchema).optional(),
 });
 export type Comparison = z.infer<typeof ComparisonSchema>;
 export const DesignSessionSchema = z.object({

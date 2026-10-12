@@ -116,6 +116,26 @@ describe("manufacturing revision comparisons across concept refinements",()=>{
     expect(mock.read.mock.calls.some(call=>(call[0] as ArtifactRef).id===older.artifacts.find(a=>a.kind==="audit")!.id)).toBe(false);
   });
 
+  it("judges a 3D revision against the measurable checks of the plan behind its refined concept",async()=>{
+    mock.getDb.mockReturnValue({from:(table:string)=>{expect(["design_records","generation_jobs"]).toContain(table);return query();}});
+    const first=manufacturing(null,{width:177.7,depth:1.9,triangles:79868,boundary:0});
+    const plan:RevisionPlan={id:randomUUID(),sessionId,parentRevisionId:first.id,requestedChange:"Derinliği 25 mm olsun",interpretedIntent:"Thicker logo",preserve:["height"],action:"edit_concept",reason:"Too thin",expectedDifferences:["Deeper"],targetHeightMm:null,maxAttempts:2,estimatedCostUsd:.5,createdAt:timestamp,
+      checks:[{id:"feedback-1-depth_mm",metric:"depth_mm",op:"=",value:25,toleranceMm:.5,quote:"Derinliği 25 mm olsun",source:"feedback"}],rejectedCheckCount:0};
+    const jobId=randomUUID();
+    records.set(plan.id,{id:plan.id,session_id:sessionId,kind:"plan",data:plan as unknown as Record<string,unknown>});
+    records.set(jobId,{id:jobId,session_id:sessionId,kind:"job",data:{planId:plan.id}});
+    const revised=concept(first);revised.sourceJobId=jobId;
+    const second=manufacturing(revised,{width:177.5,depth:69.6,triangles:80000,boundary:0});
+    await evaluateRevision(second);
+    const saved=comparisons(second);
+    expect(saved).toHaveLength(2);
+    for(const row of saved) {
+      expect(row.planId).toBeNull();
+      expect(row.acceptance?.find(r=>r.source==="feedback")).toMatchObject({metric:"depth_mm",value:25,status:"not_met",actualMm:69.6,planId:plan.id});
+      expect(row.acceptance?.find(r=>r.source==="spec")).toMatchObject({metric:"height_mm",status:"met",actualMm:120,planId:null});
+    }
+  });
+
   it("does not add a second comparison when the direct parent is already a manufacturing revision",async()=>{
     const first=manufacturing(null,{width:80,depth:50,triangles:1000,boundary:4});
     const second=manufacturing(first,{width:76,depth:48,triangles:900,boundary:0});

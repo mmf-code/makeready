@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { ComparisonSchema, EvaluationSchema, PhysicalAuditSchema, RevisionSchema, type Revision, type RevisionPlan, type PhysicalAudit, type Evaluation } from "../contracts";
+import { evaluateChecks, specChecks } from "./acceptance";
+import { ComparisonSchema, EvaluationSchema, PhysicalAuditSchema, RevisionPlanSchema, RevisionSchema,type Revision, type RevisionPlan, type PhysicalAudit, type Evaluation } from "../contracts";
 import { checked, getDb } from "../db";
 import { readArtifact } from "../storage";
 import { databaseError } from "../errors";
@@ -44,6 +45,17 @@ async function manufacturingAncestor(revision:Revision,parent:Revision):Promise<
   }
   return null;
 }
+/** A 3D revision made from a refined concept is judged against the plan that produced that concept. */
+async function planBehind(revision:Revision,parent:Revision):Promise<RevisionPlan|null> {
+  if(revision.kind!=="manufacturing"||parent.kind!=="concept"||!parent.sourceJobId) return null;
+  const {data:job,error}=await getDb().from("generation_jobs").select("data").eq("id",parent.sourceJobId).eq("session_id",revision.sessionId).maybeSingle();
+  if(error) databaseError(error);
+  const planId=(job?.data as {planId?:unknown}|undefined)?.planId;
+  if(typeof planId!=="string") return null;
+  const {data:row,error:planError}=await getDb().from("design_records").select("data").eq("id",planId).eq("session_id",revision.sessionId).eq("kind","plan").maybeSingle();
+  if(planError) databaseError(planError);
+  return row?RevisionPlanSchema.parse(row.data):null;
+}
 /** Materialized observations are append-only and independently recoverable after finalization. */
 export async function evaluateRevision(revision:Revision,plan?:RevisionPlan,visual?:VisualCritique,visualModel?:string):Promise<void> {
   const timestamp=revision.createdAt,hashes=revision.artifacts.map(a=>a.sha256);
@@ -56,7 +68,10 @@ export async function evaluateRevision(revision:Revision,plan?:RevisionPlan,visu
   if(!revision.parentRevisionId) return;
   const row=await checked(getDb().from("design_records").select("data").eq("id",revision.parentRevisionId).eq("session_id",revision.sessionId).eq("kind","revision").single());
   const parent=RevisionSchema.parse(row.data),parentAudit=await auditOf(parent);
-  const comparison=ComparisonSchema.parse({id:stableId(`${revision.id}:comparison`),sessionId:revision.sessionId,parentRevisionId:parent.id,childRevisionId:revision.id,planId:plan?.id||null,visualEvaluationIds:evaluations.filter(e=>e.kind==="visual").map(e=>e.id),physicalEvaluationIds:evaluations.filter(e=>e.kind==="physical").map(e=>e.id),summary:visual?.summary||"Compare the preserved parent with this separately stored child. Geometry measurements and visual judgement remain separate.",differences:visual?.observations.filter(o=>o.status!=="uncertain").map(o=>`${o.criterion}: ${o.finding}`)||[],preservationFindings:visual?.preserveObserved||[],limitations:["Bounding-box differences do not prove regional changes or preserved facial features.","Camera preset specifies matched front, side and three-quarter views; automated render comparison was not performed.",...(visual?.limitations||[])],geometryDelta:compareGeometry(parentAudit,audit),cameraPreset:"matched_front_side_three_quarter",createdAt:timestamp});
+  const acceptancePlan=plan??await planBehind(revision,parent);
+  const auditRef=revision.artifacts.find(a=>a.kind==="audit");
+  const acceptance=evaluateChecks([...(revision.kind==="manufacturing"?specChecks(revision.spec):[]),...(acceptancePlan?.checks??[])],audit,auditRef?.sha256??null,acceptancePlan?.id??null);
+  const comparison=ComparisonSchema.parse({id:stableId(`${revision.id}:comparison`),sessionId:revision.sessionId,parentRevisionId:parent.id,childRevisionId:revision.id,planId:plan?.id||null,visualEvaluationIds:evaluations.filter(e=>e.kind==="visual").map(e=>e.id),physicalEvaluationIds:evaluations.filter(e=>e.kind==="physical").map(e=>e.id),summary:visual?.summary||"Compare the preserved parent with this separately stored child. Geometry measurements and visual judgement remain separate.",differences:visual?.observations.filter(o=>o.status!=="uncertain").map(o=>`${o.criterion}: ${o.finding}`)||[],preservationFindings:visual?.preserveObserved||[],limitations:["Bounding-box differences do not prove regional changes or preserved facial features.","Camera preset specifies matched front, side and three-quarter views; automated render comparison was not performed.",...(visual?.limitations||[])],geometryDelta:compareGeometry(parentAudit,audit),cameraPreset:"matched_front_side_three_quarter",createdAt:timestamp,acceptance});
   await append("comparison",revision.sessionId,comparison);
   if(revision.kind!=="manufacturing"||parent.kind!=="concept"||!audit) return;
   const ancestor=await manufacturingAncestor(revision,parent);
@@ -73,7 +88,7 @@ export async function evaluateRevision(revision:Revision,plan?:RevisionPlan,visu
       "Bounding-box differences do not prove regional changes or preserved facial features.",
       "No visual comparison between these manufacturing revisions or automated matched-view rendering was performed.",
       ...new Set([...ancestorAudit.notChecked,...audit.notChecked]),
-    ],geometryDelta:compareGeometry(ancestorAudit,audit),cameraPreset:"matched_front_side_three_quarter",createdAt:timestamp,
+    ],geometryDelta:compareGeometry(ancestorAudit,audit),cameraPreset:"matched_front_side_three_quarter",createdAt:timestamp,acceptance,
   });
   await append("comparison",revision.sessionId,manufacturingComparison);
 }

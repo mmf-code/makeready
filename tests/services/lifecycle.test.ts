@@ -120,7 +120,7 @@ describe("application lifecycle against the actual migration", () => {
     mock.getDb.mockReturnValue({ from, storage }); mock.rpc.mockImplementation(rpc);
     mock.intelligence.mockImplementation((options: { onResponse?: (metadata: IntelligenceResponseMetadata) => Promise<void> }) => ({ planRevision: (input: unknown) => mock.plan(input,options.onResponse) }));
     mock.plan.mockImplementation(async (_input: unknown, onResponse?: (metadata: IntelligenceResponseMetadata) => Promise<void>) => {
-      await onResponse?.({ operation: "revision_plan", responseId: "received-response", requestId: "request-id", model: "test-model", inputTokens: 10, cachedInputTokens: 0, outputTokens: 10, totalTokens: 20 });
+      await onResponse?.({ operation: "revision_plan", responseId: "received-response", requestId: "request-id", model: "test-model", inputTokens: 10, cachedInputTokens: 0, outputTokens: 10, totalTokens: 20, promptSha256: "b".repeat(64) });
       return draft;
     });
   });
@@ -317,7 +317,7 @@ describe("application lifecycle against the actual migration", () => {
     vi.stubEnv("LLM_MODEL", "claude-haiku-5-5");
     vi.stubEnv("LLM_BASE_URL", "https://api.anthropic.com/v1");
     mock.plan.mockImplementation(async (_input: unknown, onResponse?: (metadata: IntelligenceResponseMetadata) => Promise<void>) => {
-      await onResponse?.({ operation: "revision_plan", responseId: "msg_test", requestId: "request-test", model: "claude-haiku-5-5", inputTokens: 40, cachedInputTokens: 10, outputTokens: 30, totalTokens: 70 });
+      await onResponse?.({ operation: "revision_plan", responseId: "msg_test", requestId: "request-test", model: "claude-haiku-5-5", inputTokens: 40, cachedInputTokens: 10, outputTokens: 30, totalTokens: 70, promptSha256: "b".repeat(64) });
       return draft;
     });
     const revision = await parent(), services = createServices(scope);

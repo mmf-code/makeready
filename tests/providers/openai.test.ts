@@ -25,7 +25,7 @@ describe("bounded design intelligence", () => {
     expect(result.targetHeightMm).toBe(120);
     expect(createResponse).toHaveBeenCalledTimes(1);
     expect(createResponse.mock.calls[0][0]).toMatchObject({ model: INTELLIGENCE_MODEL, store: false, text: { format: { type: "json_schema", strict: true, name: "makeready_design_spec" } } });
-    expect(onResponse).toHaveBeenCalledWith({ operation: "design_spec", responseId: "resp_123", requestId: "req_123", model: INTELLIGENCE_MODEL, inputTokens: 150, cachedInputTokens: 20, outputTokens: 100, totalTokens: 250 });
+    expect(onResponse).toHaveBeenCalledWith({ operation: "design_spec", responseId: "resp_123", requestId: "req_123", model: INTELLIGENCE_MODEL, inputTokens: 150, cachedInputTokens: 20, outputTokens: 100, totalTokens: 250, promptSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
   });
 
   it("accepts a CNC candidate in the strict draft without claiming machining checks", async () => {
@@ -50,7 +50,7 @@ describe("bounded design intelligence", () => {
 
   it("keeps original human feedback and the requested preserved features in a separate draft", async () => {
     const original = structuredClone(spec);
-    const createResponse = vi.fn().mockResolvedValue(response({ requestedChange: "paraphrased", interpretedIntent: "Reduce ears", preserve: ["face", "clothing"], action: "edit_concept", reason: "Appearance refinement", expectedDifferences: ["Smaller ears"], targetHeightMm: null }));
+    const createResponse = vi.fn().mockResolvedValue(response({ requestedChange: "paraphrased", interpretedIntent: "Reduce ears", preserve: ["face", "clothing"], action: "edit_concept", reason: "Appearance refinement", expectedDifferences: ["Smaller ears"], targetHeightMm: null, checks: [] }));
     const feedback = "Kulakları küçült, yüzü ve kıyafetleri koru";
     const plan = await createDesignIntelligence({ createResponse }).planRevision({ spec, feedback, parentImageUrl: "https://v3.fal.media/parent.png" });
     expect(plan.requestedChange).toBe(feedback);
@@ -61,7 +61,7 @@ describe("bounded design intelligence", () => {
   });
 
   it("refuses a geometry scale plan without a measurable target", async () => {
-    const createResponse = vi.fn().mockResolvedValue(response({ requestedChange: "Make bigger", interpretedIntent: "Increase height", preserve: [], action: "scale_geometry", reason: "Requested size", expectedDifferences: ["Larger"], targetHeightMm: null }));
+    const createResponse = vi.fn().mockResolvedValue(response({ requestedChange: "Make bigger", interpretedIntent: "Increase height", preserve: [], action: "scale_geometry", reason: "Requested size", expectedDifferences: ["Larger"], targetHeightMm: null, checks: [] }));
     await expect(createDesignIntelligence({ createResponse }).planRevision({ spec, feedback: "Make bigger" })).rejects.toThrow("dimensions");
     expect(createResponse).toHaveBeenCalledTimes(1);
   });
@@ -83,16 +83,17 @@ describe("bounded design intelligence", () => {
     expect(createResponse).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["edit_concept", "regenerate_model"])("rejects native %s with a non-null preserved height without repairing or retrying", async (action) => {
+  it.each(["edit_concept", "regenerate_model"])("derives a null target for native %s instead of failing on a copied preserved height", async (action) => {
     const draft = { requestedChange: "Reduce ears", interpretedIntent: "Smaller ears", preserve: ["original 120 mm height", "face"], action,
-      reason: "Appearance feedback", expectedDifferences: ["Smaller ears"], targetHeightMm: 120 };
+      reason: "Appearance feedback", expectedDifferences: ["Smaller ears"], targetHeightMm: 120, checks: [] };
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({
       id: "msg_native_invalid_plan", type: "message", model: "claude-haiku-5-5", stop_reason: "end_turn",
       content: [{ type: "text", text: JSON.stringify(draft) }], usage: { input_tokens: 2513, output_tokens: 943 },
     }), { headers: { "content-type": "application/json", "request-id": "req_native_invalid_plan" } }));
     const onResponse = vi.fn();
-    await expect(createDesignIntelligence({ apiStyle: "anthropic", model: "claude-haiku-5-5", apiKey: "sk-ant-test-fixture", fetch, onResponse })
-      .planRevision({ spec, feedback: "Smaller ears; preserve original height" })).rejects.toMatchObject({ kind: "invalid_result", diagnosticCode: "REVISION_ACTION_TARGET_MISMATCH" });
+    const result = await createDesignIntelligence({ apiStyle: "anthropic", model: "claude-haiku-5-5", apiKey: "sk-ant-test-fixture", fetch, onResponse })
+      .planRevision({ spec, feedback: "Smaller ears; preserve original height" });
+    expect(result).toMatchObject({ action, targetHeightMm: null, checks: [], rejectedCheckCount: 0 });
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(onResponse).toHaveBeenCalledWith(expect.objectContaining({ operation: "revision_plan", responseId: "msg_native_invalid_plan", inputTokens: 2513, outputTokens: 943, totalTokens: 3456 }));
     const sent = JSON.parse(fetch.mock.calls[0][1]!.body as string);
@@ -122,10 +123,14 @@ describe("bounded design intelligence", () => {
 
   it("keeps a valid new scale target exactly as the agent selected it", async () => {
     const draft = { requestedChange: "Increase height to 150 mm", interpretedIntent: "Scale uniformly", preserve: ["appearance"], action: "scale_geometry",
-      reason: "Explicit new height", expectedDifferences: ["150 mm high"], targetHeightMm: 150 };
+      reason: "Explicit new height", expectedDifferences: ["150 mm high"], targetHeightMm: 150,
+      checks: [{ metric: "height_mm", op: "=", value: 150, quote: "height to 150 mm" }, { metric: "width_mm", op: "<=", value: 90, quote: "no wider than 90 mm" }] };
     const createResponse = vi.fn().mockResolvedValue(response(draft));
     const result = await createDesignIntelligence({ createResponse }).planRevision({ spec, feedback: "Increase height to 150 mm" });
     expect(result.targetHeightMm).toBe(150); expect(result.action).toBe("scale_geometry");
+    // The width check quotes words the person never wrote, so code drops it.
+    expect(result.checks).toEqual([{ id: "feedback-1-height_mm", metric: "height_mm", op: "=", value: 150, toleranceMm: 3, quote: "height to 150 mm", source: "feedback" }]);
+    expect(result.rejectedCheckCount).toBe(1);
     expect(createResponse).toHaveBeenCalledTimes(1);
   });
 
@@ -165,7 +170,7 @@ describe("bounded design intelligence", () => {
     expect(sdk.chat).toHaveBeenCalledTimes(1); expect(sdk.responses).not.toHaveBeenCalled();
     expect(sdk.chat.mock.calls[0][0]).toMatchObject({ model: "compatible-vision-model", max_tokens: 2500, stream: false, response_format: { type: "json_schema", json_schema: { name: "makeready_design_spec", strict: true } } });
     expect(sdk.chat.mock.calls[0][0].messages).toEqual(expect.arrayContaining([expect.objectContaining({ role: "user", content: expect.arrayContaining([{ type: "image_url", image_url: { url: "https://v3.fal.media/reference.png", detail: "auto" } }]) })]));
-    expect(onResponse).toHaveBeenCalledWith({ operation: "design_spec", responseId: "chatcmpl_123", requestId: "req_chat", model: "compatible-vision-model", inputTokens: 200, cachedInputTokens: 30, outputTokens: 90, totalTokens: 290 });
+    expect(onResponse).toHaveBeenCalledWith({ operation: "design_spec", responseId: "chatcmpl_123", requestId: "req_chat", model: "compatible-vision-model", inputTokens: 200, cachedInputTokens: 30, outputTokens: 90, totalTokens: 290, promptSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(intelligenceModel()).toBe("compatible-vision-model");
     expect(intelligenceProvider()).toBeNull();
   });

@@ -4,7 +4,7 @@ import { anthropicJsonSchema, createAnthropicMessage } from "@/lib/providers/ant
 
 const model = "claude-haiku-5-5";
 const spec: DesignSpecDraft = { description: "A friendly cat", objectType: "figurine", use: "desk decoration", targetHeightMm: 120, preserve: ["face"], changeable: ["ears"], process: "resin_candidate" };
-const plan = { requestedChange: "paraphrase", interpretedIntent: "Reduce ears", preserve: ["face"], action: "edit_concept", reason: "Appearance refinement", expectedDifferences: ["Smaller ears"], targetHeightMm: null };
+const plan = { requestedChange: "paraphrase", interpretedIntent: "Reduce ears", preserve: ["face"], action: "edit_concept", reason: "Appearance refinement", expectedDifferences: ["Smaller ears"], targetHeightMm: null, checks: [] };
 const critique = { summary: "Smaller ears", alignment: "aligned", observations: [{ criterion: "ears", finding: "Smaller ears visible", status: "met" }], preserveObserved: ["face"], suggestedChanges: [], limitations: ["Images cannot verify physical geometry"] };
 const body = (data: unknown) => ({ id: "msg_received", type: "message", model: "claude-haiku-5-5", stop_reason: "end_turn", content: [{ type: "thinking", thinking: "not output JSON" }, { type: "text", text: JSON.stringify(data) }], usage: { input_tokens: 100, cache_read_input_tokens: 30, cache_creation_input_tokens: 20, output_tokens: 60 } });
 const received = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "request-id": "req_native" } });
@@ -34,7 +34,7 @@ describe("native Anthropic design intelligence", () => {
     expect(request.messages.every((message: {role: string}) => message.role === "user")).toBe(true);
     expect(request.output_config.format.schema.properties.targetHeightMm).not.toHaveProperty("maximum");
     expect(request.output_config.format.schema.properties.targetHeightMm.description).toContain("2000");
-    expect(onResponse).toHaveBeenCalledWith({ operation: "design_spec", responseId: "msg_received", requestId: "req_native", model, provider: "anthropic", inputTokens: 150, cachedInputTokens: 30, cacheCreationInputTokens: 20, outputTokens: 60, totalTokens: 210 });
+    expect(onResponse).toHaveBeenCalledWith({ operation: "design_spec", responseId: "msg_received", requestId: "req_native", model, provider: "anthropic", inputTokens: 150, cachedInputTokens: 30, cacheCreationInputTokens: 20, outputTokens: 60, totalTokens: 210, promptSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(isIntelligenceConfigured()).toBe(true); expect(intelligenceModel()).toBe(model); expect(intelligenceProvider()).toBeNull();
   });
 
