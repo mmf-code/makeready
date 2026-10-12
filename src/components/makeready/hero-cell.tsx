@@ -13,7 +13,7 @@ const STEPS: { mode: CatMode; ears: number; tail: number; label: string; sub: st
   { mode: "sketch", ears: 1.5, tail: 0.075, label: "Concept v1", sub: "The look inspector finds the ears 31% too large.", hold: 2600 },
   { mode: "sketch", ears: 1.0, tail: 0.075, label: "Concept v2", sub: "Change order CO-1: ears 25% smaller. Face and scarf kept.", hold: 2600 },
   { mode: "clay", ears: 1.0, tail: 0.075, label: "3D model", sub: "Sculpted from four views of v2.", hold: 2200 },
-  { mode: "measured", ears: 1.0, tail: 0.12, label: "Print shape, 120.0 mm", sub: "The print shop asked for a thicker tail. CO-2 made it 1.4 mm. Değişir, kendisi kalır.", dims: true, hold: 2800 },
+  { mode: "measured", ears: 1.0, tail: 0.12, label: "Print shape, 120.0 mm", sub: "The print shop asked for a thicker tail. CO-2 made it 1.4 mm. Nothing else changed.", dims: true, hold: 2800 },
   { mode: "printing", ears: 1.0, tail: 0.12, label: "Printing", sub: "Layer by layer, cured with 405 nm light.", print: true, hold: 3600 },
   { mode: "painted", ears: 1.0, tail: 0.12, label: "Painted and inspected", sub: "A painter and her agent finished it. Caliper: 120.2 mm.", hold: 3400 },
 ];
@@ -41,7 +41,7 @@ export function HeroCell() {
       </div>
       <div className="pointer-events-none absolute inset-x-[18px] top-4 flex justify-between gap-3">
         <div>
-          <h2 className="mr-display text-[clamp(26px,2.6vw,36px)] text-clay">{s.label}</h2>
+          <h2 className="mr-heading text-[clamp(22px,2vw,28px)] text-ink">{s.label}</h2>
           <p className="mt-1 mb-0 max-w-[30em] text-sm text-stage-2">{s.sub}</p>
         </div>
         <span className="h-fit rounded-full border border-dashed border-stage-2 bg-panel/70 px-3 py-1 text-[12.5px] whitespace-nowrap text-stage-2">Sample, not generated</span>

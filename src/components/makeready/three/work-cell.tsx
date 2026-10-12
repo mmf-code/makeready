@@ -6,7 +6,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { createToyCat, type CatMode } from "./toy-cat";
+import { createToyCat, plushFibre, type CatMode } from "./toy-cat";
 
 export type GlbLook = "original" | "clay" | "resin" | "primer";
 export type CellSubject =
@@ -221,13 +221,14 @@ function GlbView({ url, look, topRef }: { url: string; look: GlbLook; topRef: Re
     return { object: holder, originals };
   }, [gltf.scene, clip]);
 
-  const override = useMemo(() => new THREE.MeshPhysicalMaterial({ clippingPlanes: [clip], clipShadows: true }), [clip]);
+  const override = useMemo(() => new THREE.MeshPhysicalMaterial({ clippingPlanes: [clip], clipShadows: true, bumpMap: plushFibre(), sheenRoughness: 0.5 }), [clip]);
   useEffect(() => {
     topRef.current = HEIGHT;
     if (look === "original") originals.forEach((mat, mesh) => { mesh.material = mat; });
     else {
       const l = LOOKS[look];
       override.color.set(l.color); override.roughness = l.roughness; override.envMapIntensity = l.env; override.clearcoat = look === "resin" ? 0.3 : 0;
+      override.sheen = look === "resin" ? 0 : 1; override.sheenColor.set(l.color).lerp(new THREE.Color(0xffffff), 0.55); override.bumpScale = look === "resin" ? 0 : 0.6;
       originals.forEach((_, mesh) => { mesh.material = override; });
     }
   }, [look, originals, override, topRef]);

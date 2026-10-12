@@ -25,7 +25,9 @@ export default async function RunPreview({ searchParams }: PageProps<"/dev/run">
     id: "00000000-0000-4000-8000-000000000094", sessionId: base.id, revisionId: made.id, kind: "physical", artifactHashes: [], engine: "fixture",
     method: "Development fixture only", limitations: [FIXTURE_LABEL], createdAt: "2026-10-12T08:21:00.000Z", audit: exampleAudit,
   };
-  const session: DesignSession = stage === "concept"
+  const empty: DesignSession = { ...base, revisions: [], plans: [], evaluations: [], comparisons: [], decisions: [],
+    jobs: [{ ...base.jobs[0], operation: "concept", status: "running", result: null, error: null, progress: 40 }] };
+  const session: DesignSession = stage === "empty" ? empty : stage === "concept"
     ? { ...base, decisions: [] }
     : { ...base, revisions: [...base.revisions, made], evaluations: [...base.evaluations, physical], updatedAt: made.createdAt,
         jobs: stage === "made" ? base.jobs.filter((j) => j.status === "completed") : base.jobs };

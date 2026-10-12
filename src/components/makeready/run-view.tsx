@@ -7,7 +7,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { DesignSession, MakePackageResult, Revision, RevisionPlan } from "@/lib/contracts";
 import { decideRevision, executePlan, generateModel, getMakePackage, getSession, MakeReadyClientError, planRevision } from "@/lib/client";
 import { explain } from "./explain";
-import { Andon, Hat, Logo, Mascot, Wordmark } from "./brand";
+import { Andon, Hat, Wordmark } from "./brand";
+import { Hamur } from "./hamur/hamur";
 import {
   ACTION_WORDS, artifactOf, BUILDERS, buildRunModel, SANDBOX_END, sandboxSteps, STATUS_WORDS, ZONES,
   type BuilderId, type Entry, type RunModel, type SandboxLook, type Station,
@@ -124,7 +125,7 @@ export function RunView({ sessionId, fixture, fixtureLabel }: { sessionId: strin
       </section>
 
       <NextStep session={session} model={model} refresh={refresh} sandbox={sandbox} />
-      <ProductionLine stations={stations} tokenAt={tokenAt} sandboxStarted={sandbox.started} />
+      <ProductionLine stations={stations} tokenAt={tokenAt} sandboxStarted={sandbox.started} sandboxFinished={sandbox.finished} />
     </div>
   );
 }
@@ -170,14 +171,14 @@ function Term({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0 rounded-[10px] bg-panel-2 px-2.5 py-2"><dt className="text-xs text-ink-2">{label}</dt><dd className="m-0 truncate text-[15px] font-bold">{value}</dd></div>;
 }
 function Count({ n, label }: { n: string; label: string }) {
-  return <div className="flex min-w-0 flex-col"><b className="mr-display text-[clamp(30px,2.8vw,40px)] text-clay tabular-nums">{n}</b><span className="text-[12.5px] leading-tight text-ink-2">{label}</span></div>;
+  return <div className="flex min-w-0 flex-col"><b className="mr-heading text-[clamp(28px,2.4vw,36px)] text-clay tabular-nums">{n}</b><span className="text-[12.5px] leading-tight text-ink-2">{label}</span></div>;
 }
 
 function CallLog({ entries }: { entries: Entry[] }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-[22px] border-[1.5px] border-line bg-panel">
       <header className="flex items-baseline justify-between gap-2.5 border-b-[1.5px] border-line px-[18px] pt-3.5 pb-2.5">
-        <h2 className="mr-display text-[26px]">Tool calls</h2>
+        <h2 className="mr-heading text-[22px]">Tool calls</h2>
         <span className="text-[13px] text-ink-2">How the builders talk to each other</span>
       </header>
       <ol className="m-0 flex max-h-[380px] min-h-[220px] list-none flex-col gap-1.5 overflow-auto p-2.5">
@@ -270,8 +271,9 @@ function Stage({ session, model, sandbox, selected, onSelect }: {
         <WorkCell subject={subject} print={sandboxOn ? sandbox.print : null} dims={dims} label={`${label}. ${sub}`} />
       </div>
       {!shown && (
-        <div className="absolute top-1/2 left-1/2 w-[min(60%,300px)] -translate-x-1/2 -translate-y-[40%]">
-          <Mascot kind={active ? "kavrar" : "m"} caption={active ? "Kavrar." : "Fikrine biçim ver."} />
+        <div className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-[38%] flex-col items-center gap-2">
+          <Hamur size={280} mood={active ? "working" : "idle"} playful label="Hamur" />
+          <span className="text-[14px] text-stage-2">{active ? "Shaping the first concept" : "Nothing to show yet"}</span>
         </div>
       )}
       {!imageUrl && shown?.kind === "concept" && (
@@ -286,7 +288,7 @@ function Stage({ session, model, sandbox, selected, onSelect }: {
       )}
       <div className="pointer-events-none absolute inset-x-[18px] top-4 flex justify-between gap-3">
         <div>
-          <h2 className="mr-display text-[clamp(26px,2.6vw,36px)]">{label}</h2>
+          <h2 className="mr-heading text-[clamp(22px,2vw,28px)]">{label}</h2>
           <p className="mt-1 mb-0 max-w-[34em] text-sm text-stage-2 tabular-nums">{sub}</p>
         </div>
         {active && !sandboxOn && (
@@ -382,7 +384,7 @@ function NextStep({ session, model, refresh, sandbox }: {
   } else if (model.pendingPlan) {
     const p = model.pendingPlan;
     body = (
-      <Row title={`Change order ready, not run yet`} kicker="Değişir. Kendisi kalır.">
+      <Row title="Change order ready: what changes, what stays">
         <dl className="m-0 grid min-w-0 flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[15px]">
           <dt className="font-bold">Change</dt><dd className="m-0">{p.interpretedIntent}</dd>
           <dt className="font-bold">Keep</dt>
@@ -434,7 +436,7 @@ function NextStep({ session, model, refresh, sandbox }: {
   return (
     <section aria-labelledby="step-title" className="flex flex-col gap-3 rounded-[22px] border-[1.5px] border-clay bg-panel px-5 py-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        <h2 id="step-title" className="mr-display text-[26px] text-clay">Your call</h2>
+        <h2 id="step-title" className="mr-heading text-[22px] text-ink">Your call</h2>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-clay-soft px-3 py-1 text-[13px] font-bold text-clay-deep">
           <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
           Autopilot off: paid steps wait for you
@@ -453,10 +455,9 @@ function NextStep({ session, model, refresh, sandbox }: {
     </section>
   );
 }
-function Row({ title, kicker, children }: { title: string; kicker?: string; children: ReactNode }) {
+function Row({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
-      {kicker && <span lang="tr" className="text-[13px] font-semibold tracking-[0.2em] text-coral">{kicker}</span>}
       <h3 className="m-0 text-[17px] font-bold">{title}</h3>
       <div className="flex flex-wrap items-center gap-3">{children}</div>
     </div>
@@ -472,7 +473,9 @@ function Btn({ children, primary, ...props }: ButtonHTMLAttributes<HTMLButtonEle
 }
 
 /* ---------- production line ---------- */
-function ProductionLine({ stations, tokenAt, sandboxStarted }: { stations: Record<BuilderId, Station>; tokenAt: BuilderId; sandboxStarted: boolean }) {
+function ProductionLine({ stations, tokenAt, sandboxStarted, sandboxFinished }: { stations: Record<BuilderId, Station>; tokenAt: BuilderId; sandboxStarted: boolean; sandboxFinished: boolean }) {
+  const states = Object.values(stations).map((s) => s.state);
+  const mood = states.includes("problem") ? "worried" : sandboxFinished ? "happy" : states.includes("working") ? "working" : "idle";
   const track = useRef<HTMLDivElement>(null);
   const refs = useRef(new Map<BuilderId, HTMLElement>());
   const [left, setLeft] = useState<number | null>(null);
@@ -488,8 +491,8 @@ function ProductionLine({ stations, tokenAt, sandboxStarted }: { stations: Recor
   return (
     <section aria-labelledby="line-title" className="flex flex-col gap-3 rounded-[22px] border-[1.5px] border-line bg-panel px-[18px] pt-4 pb-3.5">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
-        <h2 id="line-title" className="mr-display text-[30px]">Production line</h2>
-        <p className="m-0 max-w-[62em] text-[13.5px] text-ink-2">Every station is a builder with its own agent. They take jobs, push work back when something will not make, and report problems through tool calls. The clay M shows where your figurine is.</p>
+        <h2 id="line-title" className="mr-heading text-[22px]">Production line</h2>
+        <p className="m-0 max-w-[62em] text-[13.5px] text-ink-2">Every station is a builder with its own agent. They take jobs, push work back when something will not make, and report problems through tool calls. Hamur carries your idea, the yellow pebble, to whichever station has it now.</p>
       </div>
       <div className="overflow-x-auto pb-1">
         <div ref={track} className="relative flex min-w-[1240px] gap-2.5 pb-[30px]">
@@ -516,7 +519,7 @@ function ProductionLine({ stations, tokenAt, sandboxStarted }: { stations: Recor
             </div>
           ))}
           <div aria-hidden="true" className="mr-tape absolute inset-x-0 bottom-2 h-2.5 rounded-sm" />
-          {left !== null && <div aria-hidden="true" className="absolute -bottom-0.5 -ml-[19px] transition-[left] duration-700" style={{ left }}><Logo className="h-[26px] w-[38px] drop-shadow-[0_2px_0_rgba(0,0,0,0.15)]" /></div>}
+          {left !== null && <div aria-hidden="true" className="absolute -bottom-2 -ml-[29px] transition-[left] duration-700" style={{ left }}><Hamur size={58} mood={mood} cue={{ act: "hop", key: tokenAt }} /></div>}
         </div>
       </div>
       <p className="m-0 text-[13px] text-ink-2">

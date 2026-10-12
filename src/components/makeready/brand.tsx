@@ -1,18 +1,12 @@
 import type { CSSProperties } from "react";
 
-import Image from "next/image";
-import kavrar from "./assets/hamur-kavrar.png";
-import sekil from "./assets/hamur-sekil.png";
-import hamurM from "./assets/hamur-m.png";
+import { REST_PATH } from "./hamur/engine";
 
-/** The HAMUR mark: a soft clay M. Two humps, a dip on top, a tooth between the legs. */
+/** The HAMUR mark: Hamur's rest pose, drawn from the same path the character animates. */
 export function Logo({ className = "h-7 w-[42px]" }: { className?: string }) {
   return (
     <svg viewBox="0 0 600 400" className={`text-clay ${className}`} aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M62 390C32 390 26 362 30 330C38 236 52 140 86 84C116 34 160 14 204 18C252 22 280 58 300 82C312 96 330 96 342 82C366 54 398 32 440 36C500 42 548 92 562 172C576 250 576 322 572 352C569 380 553 390 528 390L470 390C444 390 434 376 431 350C425 302 406 258 380 248C356 240 344 266 334 292C324 314 300 320 285 302C272 286 264 256 244 248C220 238 200 268 192 302C185 336 184 362 179 377C174 388 164 390 150 390Z"
-      />
+      <path fill="currentColor" d={REST_PATH} />
     </svg>
   );
 }
@@ -23,23 +17,6 @@ export function Wordmark({ size = "md" }: { size?: "md" | "lg" }) {
       <Logo className={size === "lg" ? "h-10 w-[60px]" : "h-7 w-[42px]"} />
       <b className={`mr-display ${size === "lg" ? "text-[40px]" : "text-[28px]"} leading-none`}>MakeReady</b>
     </span>
-  );
-}
-
-const MASCOTS = {
-  m: { src: hamurM, alt: "The MakeReady clay M" },
-  kavrar: { src: kavrar, alt: "The clay M grasping a rough stone" },
-  sekil: { src: sekil, alt: "The clay M holding a smooth stone" },
-} as const;
-
-/** Photographed clay mascot from the HAMUR board, on its own paper so it reads in both themes. */
-export function Mascot({ kind, className = "", caption }: { kind: keyof typeof MASCOTS; className?: string; caption?: string }) {
-  const m = MASCOTS[kind];
-  return (
-    <figure className={`mr-paper m-0 flex flex-col items-center gap-1 rounded-[20px] p-3 ${className}`}>
-      <Image src={m.src} alt={m.alt} className="h-auto w-full" sizes="(max-width: 768px) 60vw, 320px" />
-      {caption && <figcaption className="text-[13px] tracking-[0.2em] text-[#63636c]">{caption}</figcaption>}
-    </figure>
   );
 }
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Hat, Mascot, Wordmark } from "@/components/makeready/brand";
+import { Hat, Wordmark } from "@/components/makeready/brand";
 import { HeroCell } from "@/components/makeready/hero-cell";
 import { RecentRuns, StartForm } from "@/components/makeready/start-form";
 
@@ -28,14 +28,9 @@ export default function Home() {
       <section className="grid items-stretch gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <div className="flex min-w-0 flex-col gap-5">
           <div className="flex flex-col gap-4">
-            <span className="mr-kicker" lang="tr">Fikirden gerçek objeye.</span>
-            <h1 className="mr-display m-0 text-[clamp(52px,6.6vw,96px)] text-clay" lang="tr">Fikrine biçim ver.</h1>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-              <span className="mr-rule" aria-hidden="true" />
-              <p className="m-0 text-[15px] leading-snug text-ink-2" lang="tr">Üretir. Eleştirir. Değerini korur.<br />Geri kalanını yeniden şekillendirir.</p>
-            </div>
-            <p className="m-0 max-w-[36em] text-[18px] text-ink">
-              Say it once. A foreman agent plans the work, inspectors send back what is off, a geometry agent builds the 3D model, and maker agents print, paint and ship it. They talk in tool calls you can watch, and anything that costs money waits for your approval.
+            <h1 className="mr-display m-0 text-[clamp(52px,6.6vw,96px)] text-clay">Give your idea a shape.</h1>
+            <p className="m-0 max-w-[34em] text-[19px] leading-relaxed text-ink">
+              Describe an object once. Agents design it, critique it, keep what matters and reshape the rest, then hand print-ready files to makers. Every step is a tool call you can follow, and anything that costs money waits for your approval.
             </p>
           </div>
           <StartForm />
@@ -46,13 +41,12 @@ export default function Home() {
 
       <section id="agents" aria-labelledby="agents-title" className="grid gap-6 rounded-[28px] border-[1.5px] border-line bg-panel p-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
         <div className="flex flex-col gap-3">
-          <Mascot kind="sekil" caption="Şekil verir." className="w-[min(100%,260px)]" />
-          <h2 id="agents-title" className="mr-display m-0 text-[clamp(32px,3.4vw,46px)] text-clay">Your agent can run all of it</h2>
+          <h2 id="agents-title" className="mr-heading m-0 text-[clamp(28px,2.8vw,38px)] text-ink">Your agent can run all of it</h2>
           <p className="m-0 max-w-[34em] text-[16px] text-ink-2">
             MakeReady is an MCP server. Add it to ChatGPT or Claude and say what you want in plain words. Your assistant calls these tools, the MakeReady card appears in the chat, and the same run updates here live. For now your assistant asks you before every paid tool.
           </p>
-          <p className="m-0 rounded-xl bg-panel-2 px-4 py-3 text-[16px] font-semibold" lang="tr">
-            {"“MakeReady ile kedimin 12 cm'lik, elle boyanmış figürünü yap.”"}
+          <p className="m-0 rounded-xl bg-panel-2 px-4 py-3 text-[16px] font-semibold">
+            “Use MakeReady to make a 12 cm hand-painted figurine of my cat.”
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-4">

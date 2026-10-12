@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { createSession, MakeReadyClientError, startDesign, uploadSourceImage } from "@/lib/client";
 import { explain } from "./explain";
+import { Hamur } from "./hamur/hamur";
+import type { Act } from "./hamur/engine";
 
 const USES = ["Hand-painted tabletop figurine", "Desk decor", "Birthday gift figurine"];
-const EXAMPLE = "Kedimin 12 cm'lik, elle boyanmış bir figürünü yap. Atkısı mavi olsun, doğum günü hediyesi.";
+const EXAMPLE = "A 12 cm hand-painted figurine of my cat, wearing a blue scarf. It's a birthday gift.";
 const RECENT_KEY = "makeready.recentRuns";
 
 export interface RecentRun { id: string; title: string; at: string }
@@ -28,6 +30,8 @@ export function StartForm() {
   const [error, setError] = useState<string | null>(null);
   const key = useRef<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [cue, setCue] = useState<{ act: Act; key: number } | null>(null);
+  const say = (act: Act) => setCue({ act, key: Date.now() });
 
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
@@ -37,11 +41,13 @@ export function StartForm() {
     if (stage) return;
     setError(null);
     setConfirming(true);
+    say("think");
   }
 
   async function start() {
     setConfirming(false);
     if (stage) return;
+    say("kavrar");
     key.current ??= `start-${crypto.randomUUID()}`;
     try {
       let sessionId: string | undefined;
@@ -61,11 +67,15 @@ export function StartForm() {
       if (e instanceof MakeReadyClientError && e.code === "ACCESS_REQUIRED") { router.push("/access?returnTo=/"); return; }
       setError(explain(e));
       setStage(null);
+      say("shake");
     }
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4 rounded-[20px] border-[1.5px] border-line bg-panel p-5">
+    <form onSubmit={submit} className="relative flex flex-col gap-4 rounded-[20px] border-[1.5px] border-line bg-panel p-5 pt-6">
+      <div className="pointer-events-auto absolute -top-[86px] right-5 hidden sm:block">
+        <Hamur size={150} mood={stage ? "working" : "idle"} cue={cue} playful label="Hamur" />
+      </div>
       <div className="flex items-start gap-3.5">
         <label htmlFor="photo" className="grid size-[86px] shrink-0 cursor-pointer place-items-center overflow-hidden rounded-[14px] border-2 border-dashed border-ink-2 bg-panel-2 text-center text-xs leading-tight text-ink-2">
           {preview ? (
