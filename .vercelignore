@@ -1,0 +1,17 @@
+# Vercel CLI does not read .gitignore. Keep local evidence, agent state and build output out of deployments.
+/artifacts
+/.serena
+/.claude
+/.terminalgraph
+/.playwright-mcp
+/test-results
+/playwright-report
+/coverage
+/.next
+/out
+/build
+/node_modules
+*.tsbuildinfo
+.env*
+!.env.example
+.DS_Store

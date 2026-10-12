@@ -45,5 +45,8 @@ next-env.d.ts
 playwright-report/
 test-results/
 .playwright-mcp/
-/artifacts/live/
+# local evidence runs, agent tooling state and Claude worktrees
+/artifacts/
+.serena/
+.claude/worktrees/
 !.env.example
