@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { Mascot, Wordmark } from "@/components/makeready/brand";
 import { AccessForm } from "@/components/makeready/access-form";
+import { safePath } from "@/components/makeready/safe-path";
 
 export const metadata: Metadata = { title: "Demo access" };
 
 export default async function AccessPage({ searchParams }: PageProps<"/access">) {
   const params = await searchParams;
-  const returnTo = typeof params.returnTo === "string" && params.returnTo.startsWith("/") ? params.returnTo : "/";
+  const returnTo = safePath(params.returnTo);
   return (
     <main className="grid min-h-dvh place-items-center px-4 py-10">
       <div className="flex w-full max-w-[420px] flex-col gap-6">

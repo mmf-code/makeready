@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { MakeReadyClientError, unlock } from "@/lib/client";
+import { safePath } from "./safe-path";
 
 export function AccessForm({ returnTo }: { returnTo?: string }) {
   const router = useRouter();
@@ -15,7 +16,7 @@ export function AccessForm({ returnTo }: { returnTo?: string }) {
     setBusy(true); setError(null);
     try {
       const result = await unlock({ password, returnTo });
-      router.replace(result.redirectTo.startsWith("/") ? result.redirectTo : "/");
+      router.replace(safePath(result.redirectTo));
     } catch (e) {
       setError(e instanceof MakeReadyClientError && e.code === "ACCESS_REQUIRED" ? "That password did not open the gate. Check it and try again." : "Can't reach MakeReady right now. Try again in a moment.");
       setBusy(false);
