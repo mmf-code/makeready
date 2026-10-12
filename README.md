@@ -8,6 +8,34 @@ You type "a baby chick, 70 mm tall, I want to paint it". A small crew of agents 
 
 This was built in one day for a hackathon (12 October 2026). The digital half is real: real model calls, real files, real measurements. The physical half (print shop, painter, line QA, courier) is a sandbox, and the UI labels it as one.
 
+## real runs: what passed, what did not
+
+These screenshots were captured from the production app in Chrome on 12 October 2026. Each example links to its saved run.
+
+### A motor bracket: the height passes, the width fails
+
+The request was a gusseted robotics motor-mount prototype, 100 mm tall with an 80 × 80 mm base. The saved 3D model measures **100.0 × 96.2 × 79.3 mm** (height × width × depth). The acceptance panel shows green `met` rows for height and depth, and a red `not met` row for width. The feedback checks allow ±1.6 mm for an 80 mm target: depth is within that tolerance; width is not. The `(your words)` label ties the check back to the user's feedback.
+
+[Open the bracket run](https://makeready-six.vercel.app/runs/a0a21389-bd40-45e9-aa0c-7dc2a32bca8d)
+
+![Production bracket model with green height and depth checks, and a red width check: requested 80 mm, measured 96.2 mm.](docs/images/bracket-measured-sizes.png)
+
+### Geometry checks can pass while the request fails
+
+The same run's `shape.audit` reports **10 passed, 0 failed, 6 not checked** for its geometry checks. The separate `shape.accept` call still reports the width failure with a red **Problem** badge. Passing the mesh audit does not mean every requested dimension passed, or that the part is certified for manufacture.
+
+![Separate tool calls: the basic geometry audit passes, while size acceptance flags the 96.2 mm width as a problem.](docs/images/bracket-audit-and-acceptance.png)
+
+### A chick: the beak changes, but the eyes should have stayed
+
+The feedback was to make the beak twice as big and open it, while keeping the body and eyes exactly the same. Vision review reports that the beak is larger and open, but catches a change in the eyes. The **Checked** column records `not_met` for the eyes, `met` for the round body, and `uncertain` for height and paintability from images alone. The change order stays red with **Still off**, even though the edit produced v2.
+
+[Open the chick run](https://makeready-six.vercel.app/runs/347dc3f2-1fac-4a5c-b87f-851352bd1cbf)
+
+![Caught and fixed panel showing the user's request, the planner's keep-list, the saved edit, and vision review flagging changed eyes as not_met with Still off status.](docs/images/chick-change-order-review.png)
+
+The planner and image editor show their provider request IDs and durations beneath their steps. A saved edit is not automatically a successful fix: failed checks remain visible, uncertainty stays explicit, and another paid attempt waits for a person.
+
 ## what actually happens
 
 ```
