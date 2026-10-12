@@ -109,12 +109,13 @@ describe("application lifecycle against the actual migration", () => {
     db = new PGlite();
     await db.exec("create role anon; create role authenticated; create role service_role bypassrls; create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint);");
     await db.exec(await readFile(new URL("../../supabase/migrations/202610120001_makeready.sql", import.meta.url),"utf8"));
+    await db.exec(await readFile(new URL("../../supabase/migrations/202610120002_comparison_ancestry.sql", import.meta.url),"utf8"));
     image = await sharp({ create: { width: 12, height: 10, channels: 3, background: "orange" } }).png().toBuffer();
   }, 30_000);
   beforeEach(async () => {
     await db.exec("truncate public.generation_job_events,public.design_records,public.make_artifacts,public.generation_jobs,public.make_budgets,public.design_sessions restart identity cascade;");
     files.clear(); vi.clearAllMocks();
-    vi.stubEnv("FAL_KEY","test-only"); vi.stubEnv("OPENAI_API_KEY","test-only"); vi.stubEnv("LLM_BASE_URL",""); vi.stubEnv("MAKE_BUDGET_USD","50");
+    vi.stubEnv("FAL_KEY","test-only"); vi.stubEnv("MESHY_API_KEY",""); vi.stubEnv("OPENAI_API_KEY","test-only"); vi.stubEnv("LLM_BASE_URL",""); vi.stubEnv("MAKE_BUDGET_USD","50");
     for (const key of ["LLM_API_KEY", "ANTHROPIC_API_KEY", "LLM_API_STYLE", "LLM_MODEL"]) vi.stubEnv(key, "");
     mock.getDb.mockReturnValue({ from, storage }); mock.rpc.mockImplementation(rpc);
     mock.intelligence.mockImplementation((options: { onResponse?: (metadata: IntelligenceResponseMetadata) => Promise<void> }) => ({ planRevision: (input: unknown) => mock.plan(input,options.onResponse) }));
@@ -227,6 +228,62 @@ describe("application lifecycle against the actual migration", () => {
     expect(model).toMatchObject({ operation: "model", provider: "fal", parentRevisionId: revision.id });
     expect(mock.intelligence).not.toHaveBeenCalled();
     expect(await rows("select reserved_micros::int as reserved,spent_micros::int as spent from public.make_budgets")).toEqual([{ reserved: 5_000_000, spent: 0 }]);
+  });
+
+  it("deduplicates an approved Meshy model into one paid job with no fal or LLM credentials", async () => {
+    const revision = await parent(), services = createServices(scope), before = structuredClone(revision);
+    await services.decideRevision({ revisionId: revision.id, decision: "approve" });
+    vi.stubEnv("FAL_KEY", ""); vi.stubEnv("OPENAI_API_KEY", ""); vi.stubEnv("MESHY_API_KEY", "test-meshy-only");
+    const input = { revisionId: revision.id, provider: "meshy" as const, confirmCost: true as const, idempotencyKey: randomUUID() };
+    const [first, second] = await Promise.all([services.generateModel(input), services.generateModel(input)]);
+    expect(first).toEqual(second);
+    expect(first).toMatchObject({ operation: "model", provider: "meshy", parentRevisionId: revision.id, estimatedCostUsd: 5, attempts: 0, providerRequestId: null });
+    expect(await rows("select count(*)::int as count from public.generation_jobs")).toEqual([{ count: 1 }]);
+    expect(await rows("select reserved_micros::int as reserved,spent_micros::int as spent from public.make_budgets")).toEqual([{ reserved: 5_000_000, spent: 0 }]);
+    const saved = (await rows<{ payload: Row }>("select payload from public.generation_jobs where id=$1", [first.id]))[0].payload;
+    expect(saved).toMatchObject({ input, modelProvider: "meshy", parent: before, sourceImage: revision.artifacts[0], spec });
+    vi.stubEnv("MESHY_API_KEY", "");
+    expect(await services.generateModel(input)).toEqual(first);
+    await expect(services.generateModel({ ...input, provider: "fal" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(services.generateModel({ ...input, provider: undefined })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await rows<{ data: Revision }>("select data from public.design_records where id=$1", [revision.id]))[0].data).toEqual(before);
+    expect(mock.intelligence).not.toHaveBeenCalled(); expect(mock.plan).not.toHaveBeenCalled();
+  });
+
+  it("retains default and explicit fal job identities while Meshy gets its own reservation", async () => {
+    const revision = await parent(), services = createServices(scope);
+    await services.decideRevision({ revisionId: revision.id, decision: "approve" });
+    const input = { revisionId: revision.id, confirmCost: true as const, idempotencyKey: randomUUID() };
+    const fal = await services.generateModel(input);
+    expect(fal.provider).toBe("fal");
+    const explicitFal = await services.generateModel({ ...input, provider: "fal", idempotencyKey: randomUUID() });
+    expect(explicitFal.provider).toBe("fal");
+    expect(explicitFal.id).not.toBe(fal.id);
+    vi.stubEnv("FAL_KEY", ""); vi.stubEnv("MESHY_API_KEY", "test-meshy-only");
+    const meshy = await services.generateModel({ ...input, provider: "meshy", idempotencyKey: randomUUID() });
+    expect(meshy).toMatchObject({ provider: "meshy", parentRevisionId: revision.id });
+    expect(meshy.id).not.toBe(fal.id);
+    expect(await services.generateModel(input)).toEqual(fal);
+    await expect(services.generateModel({ ...input, provider: "meshy" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(services.generateModel({ ...input, provider: "fal", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PROVIDER_UNAVAILABLE" });
+    expect(await rows("select reserved_micros::int as reserved,spent_micros::int as spent from public.make_budgets")).toEqual([{ reserved: 15_000_000, spent: 0 }]);
+    const saved = await rows<{ data: { provider: string }; payload: { modelProvider: string } }>("select data,payload from public.generation_jobs order by created_at");
+    expect(saved.map(value => [value.data.provider, value.payload.modelProvider])).toEqual([["fal", "fal"], ["fal", "fal"], ["meshy", "meshy"]]);
+  });
+
+  it("requires Meshy credentials and the latest approval before reserving a model job", async () => {
+    const revision = await parent(), services = createServices(scope);
+    const input = { revisionId: revision.id, provider: "meshy" as const, confirmCost: true as const, idempotencyKey: randomUUID() };
+    // A fal credential is not permission to silently substitute a provider.
+    await expect(services.generateModel(input)).rejects.toMatchObject({ code: "PROVIDER_UNAVAILABLE" });
+    vi.stubEnv("MESHY_API_KEY", "test-meshy-only");
+    await expect(services.generateModel(input)).rejects.toMatchObject({ code: "CONFLICT" });
+    await services.decideRevision({ revisionId: revision.id, decision: "approve" });
+    await services.decideRevision({ revisionId: revision.id, decision: "reject", note: "Change the ears first" });
+    await expect(services.generateModel(input)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await rows("select count(*)::int as count from public.generation_jobs")).toEqual([{ count: 0 }]);
+    expect(await rows("select count(*)::int as count from public.make_budgets")).toEqual([{ count: 0 }]);
+    expect(mock.intelligence).not.toHaveBeenCalled();
   });
 
   it("rejects a parent, executes the saved plan, and preserves separate comparable revisions", async () => {

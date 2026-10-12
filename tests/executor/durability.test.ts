@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors";
-import { ProviderError, type ProviderJobRef } from "@/lib/providers/types";
+import { ProviderError, type FalProviderJobRef, type MeshyProviderJobRef, type ProviderJobRef } from "@/lib/providers/types";
 import type { ArtifactRef, DesignSpec, GenerationJob, Revision } from "@/lib/contracts";
 
 const mock = vi.hoisted(() => ({
   rpc: vi.fn(), getDb: vi.fn(), evaluate: vi.fn(), store: vi.fn(), read: vi.fn(), signed: vi.fn(), prepare: vi.fn(), pack: vi.fn(),
   configured: vi.fn(), spec: vi.fn(), critique: vi.fn(), submitConcept: vi.fn(), submitEdit: vi.fn(), submitModel: vi.fn(), poll: vi.fn(), result: vi.fn(), image: vi.fn(), glb: vi.fn(),
+  meshySubmit: vi.fn(), meshyPoll: vi.fn(), meshyResult: vi.fn(), meshyImage: vi.fn(), meshyGlb: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ getDb: mock.getDb, rpc: mock.rpc, checked: async (query: PromiseLike<{ data: unknown; error: unknown }>) => { const value = await query; if (value.error) throw value.error; return value.data; } }));
 vi.mock("@/lib/storage", () => ({ storeArtifact: mock.store, readArtifact: mock.read, signedArtifact: mock.signed }));
@@ -18,6 +19,7 @@ vi.mock("@/lib/providers", async (original) => ({
   isIntelligenceConfigured: mock.configured,
   createDesignIntelligence: () => ({ designSpec: mock.spec, critiqueVisual: mock.critique }),
   createFalProvider: () => ({ submitConcept: mock.submitConcept, submitConceptEdit: mock.submitEdit, submitModel: mock.submitModel, poll: mock.poll, getResult: mock.result, downloadImage: mock.image, downloadGlb: mock.glb }),
+  createMeshyProvider: () => ({ submitModel: mock.meshySubmit, poll: mock.meshyPoll, getResult: mock.meshyResult, downloadImage: mock.meshyImage, downloadGlb: mock.meshyGlb }),
 }));
 import { advanceJob, reconcileJobs } from "@/lib/executor";
 
@@ -25,7 +27,8 @@ const sessionId = "11111111-1111-4111-8111-111111111111";
 const jobId = "22222222-2222-4222-8222-222222222222";
 const timestamp = "2026-10-12T09:00:00.000Z";
 const spec: DesignSpec = { description: "A friendly cat", objectType: "figurine", use: "desk decoration", targetHeightMm: 120, preserve: ["face"], changeable: ["ears"], process: "resin_candidate" };
-const providerRef: ProviderJobRef = { provider: "fal", operation: "concept", endpointId: "fal-ai/nano-banana", requestId: "fal-123", statusUrl: "https://queue.fal.run/fal-ai/nano-banana/requests/fal-123/status", responseUrl: "https://queue.fal.run/fal-ai/nano-banana/requests/fal-123", submittedAt: timestamp };
+const providerRef: FalProviderJobRef = { provider: "fal", operation: "concept", endpointId: "fal-ai/nano-banana", requestId: "fal-123", statusUrl: "https://queue.fal.run/fal-ai/nano-banana/requests/fal-123/status", responseUrl: "https://queue.fal.run/fal-ai/nano-banana/requests/fal-123", submittedAt: timestamp };
+const meshyRef: MeshyProviderJobRef = { provider: "meshy", operation: "model", endpointId: "meshy/image-to-3d", modelId: "meshy-7.1", requestId: "meshy-123", statusUrl: "https://api.meshy.ai/openapi/v1/image-to-3d/meshy-123", responseUrl: "https://api.meshy.ai/openapi/v1/image-to-3d/meshy-123", submittedAt: timestamp };
 const artifact = (kind: ArtifactRef["kind"]): ArtifactRef => ({ id: randomUUID(), sessionId, kind, storagePath: `test/${kind}`, sha256: "a".repeat(64), sizeBytes: 32, mimeType: kind.includes("image") ? "image/png" : "application/octet-stream", units: "none", axis: "none", createdAt: timestamp });
 type TestRow = { id: string; session_id: string; fence: number; data: GenerationJob; payload: Record<string, unknown>; provider_ref: ProviderJobRef | null };
 let row: TestRow;
@@ -76,6 +79,10 @@ beforeEach(() => {
   mock.critique.mockResolvedValue({ summary: "Design matches reference", alignment: "aligned", observations: [{ criterion: "face", finding: "Face preserved", status: "met" }], preserveObserved: ["face"], suggestedChanges: [], limitations: ["Image-only assessment"] });
   mock.submitConcept.mockResolvedValue(providerRef);
   mock.submitModel.mockResolvedValue({ ...providerRef, operation: "model", endpointId: "fal-ai/hunyuan3d-v3/image-to-3d" });
+  mock.meshySubmit.mockResolvedValue(meshyRef);
+  mock.meshyPoll.mockResolvedValue({ job: meshyRef, state: "completed" });
+  mock.meshyResult.mockResolvedValue({ job: meshyRef, imageUrls: [], glbUrl: "https://assets.meshy.ai/generated/model.glb" });
+  mock.meshyGlb.mockResolvedValue({ bytes: new Uint8Array(32), mimeType: "model/gltf-binary", sha256: "a".repeat(64) });
   mock.poll.mockResolvedValue({ state: "completed" });
   mock.result.mockResolvedValue({ job: providerRef, imageUrls: ["https://v3.fal.media/concept.png"] });
   mock.image.mockResolvedValue({ bytes: Buffer.alloc(32), mimeType: "image/png", sha256: "a".repeat(64) });
@@ -177,6 +184,96 @@ describe("durable executor", () => {
     mock.prepare.mockResolvedValue({ source: new Uint8Array(32), glb: new Uint8Array(32), stl: new Uint8Array(32), audit, geometryAudit: { status: "fail", issues: [], notChecked: ["wall_thickness"] }, bounds, hashes: { source: source.sha256, glb: "a".repeat(64), stl: "a".repeat(64) }, provenance: { pipelineVersion: "test" } });
     return { source, image, audit };
   }
+
+  function meshyFixture() {
+    const fixture = manufacturingFixture();
+    row.data.provider = "meshy"; row.data.status = "created";
+    row.payload = { input: { revisionId: randomUUID(), provider: "meshy", confirmCost: true, idempotencyKey: "meshy-stable-test-key" }, spec, sourceImage: fixture.image, modelProvider: "meshy" };
+    row.provider_ref = null;
+    return fixture;
+  }
+
+  it("submits Meshy once, resumes its saved receipt and prepares its exact downloaded GLB through the shared pipeline", async () => {
+    const { image, audit } = meshyFixture();
+    // Distinct synthetic byte fixtures prove routing and provenance; they are not generated demo assets.
+    const imageBytes = Uint8Array.from({ length: 32 }, (_, index) => index);
+    const sourceBytes = Uint8Array.from({ length: 32 }, (_, index) => 255 - index);
+    mock.read.mockImplementation(async (ref: ArtifactRef) => ref.kind === "source_glb" ? sourceBytes : imageBytes);
+    mock.meshyGlb.mockResolvedValue({ bytes: sourceBytes, mimeType: "model/gltf-binary", sha256: "a".repeat(64) });
+    mock.meshySubmit.mockImplementationOnce(async () => {
+      expect(row.payload.dispatchInFlight).toBe(true);
+      expect(row.payload.dispatchStage).toBe("meshy_submit");
+      expect(row.data.provider).toBe("meshy");
+      return meshyRef;
+    });
+    await advanceJob(jobId);
+    expect(row.data).toMatchObject({ status: "queued", provider: "meshy", providerRequestId: meshyRef.requestId, attempts: 1 });
+    expect(row.provider_ref).toEqual(meshyRef);
+    expect(row.payload.dispatchInFlight).toBe(false);
+    expect(mock.meshySubmit.mock.calls[0][0].imageUrl).toBe(`data:image/png;base64,${Buffer.from(imageBytes).toString("base64")}`);
+    mock.meshyPoll.mockResolvedValueOnce({ job: meshyRef, state: "running" });
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("running");
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("completed");
+    expect(mock.meshySubmit).toHaveBeenCalledTimes(1);
+    expect(mock.meshyPoll).toHaveBeenCalledTimes(2);
+    expect(mock.meshyPoll).toHaveBeenNthCalledWith(1, meshyRef);
+    expect(mock.meshyPoll).toHaveBeenNthCalledWith(2, meshyRef);
+    expect(mock.meshyResult).toHaveBeenCalledWith(meshyRef);
+    expect(mock.store).toHaveBeenCalledWith(sessionId, "source_glb", sourceBytes, "model/gltf-binary", "glb", "m", "y_up");
+    expect(mock.prepare).toHaveBeenCalledWith({ source: sourceBytes, targetHeightMm: 120, process: "resin_candidate" });
+    expect(record?.artifacts.map(value => value.kind)).toEqual(["source_glb", "model_glb", "model_stl", "audit", "manifest", "make_package", "concept_image"]);
+    expect(record?.artifacts).toContainEqual(image);
+    expect(mock.pack.mock.calls[0][1]).toMatchObject({ provider: meshyRef, physicalAuditStatus: "fail" });
+    const storedAudit = mock.store.mock.calls.find(call => call[1] === "audit")!;
+    expect(JSON.parse(Buffer.from(storedAudit[2]).toString("utf8"))).toEqual(audit);
+    expect(mock.submitModel).not.toHaveBeenCalled(); expect(mock.poll).not.toHaveBeenCalled(); expect(mock.glb).not.toHaveBeenCalled();
+    expect(mock.spec).not.toHaveBeenCalled(); expect(mock.critique).not.toHaveBeenCalled();
+  });
+
+  it("quarantines an ambiguous Meshy submission without automatic resubmission or fal fallback", async () => {
+    meshyFixture();
+    mock.meshySubmit.mockRejectedValueOnce(new ProviderError("Outcome unknown", "submission_unknown"));
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("submission_unknown");
+    expect(row.payload.dispatchInFlight).toBe(true);
+    await advanceJob(jobId);
+    expect(mock.meshySubmit).toHaveBeenCalledTimes(1);
+    expect(mock.rpc).toHaveBeenCalledWith("mr_fail_job", expect.objectContaining({ p_unknown: true }));
+    expect(mock.submitModel).not.toHaveBeenCalled(); expect(mock.meshyPoll).not.toHaveBeenCalled();
+    expect(record).toBeUndefined();
+  });
+
+  it("recovers Meshy polling and cached GLB ingestion without starting another paid task", async () => {
+    meshyFixture();
+    row.data.status = "queued"; row.data.providerRequestId = meshyRef.requestId; row.provider_ref = meshyRef;
+    mock.meshyPoll.mockRejectedValueOnce(new ProviderError("Polling outage", "transport"));
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("queued");
+    expect(row.provider_ref).toEqual(meshyRef);
+    mock.meshyGlb.mockRejectedValueOnce(new ProviderError("Download outage", "transport"));
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("ingesting");
+    expect(row.payload.providerResult).toMatchObject({ job: meshyRef });
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("completed");
+    expect(mock.meshyPoll).toHaveBeenCalledTimes(2);
+    expect(mock.meshyResult).toHaveBeenCalledTimes(1);
+    expect(mock.meshyGlb).toHaveBeenCalledTimes(2);
+    expect(mock.meshySubmit).not.toHaveBeenCalled(); expect(mock.submitModel).not.toHaveBeenCalled(); expect(mock.poll).not.toHaveBeenCalled();
+  });
+
+  it("rejects a saved fal receipt on a Meshy job before polling or substituting a provider", async () => {
+    meshyFixture();
+    row.data.status = "queued";
+    row.provider_ref = { ...providerRef, operation: "model", endpointId: "fal-ai/hunyuan3d-v3/image-to-3d" };
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("failed");
+    expect(mock.rpc).toHaveBeenCalledWith("mr_fail_job", expect.objectContaining({ p_unknown: false, p_error: expect.objectContaining({ code: "INVALID_INPUT" }) }));
+    expect(mock.meshySubmit).not.toHaveBeenCalled(); expect(mock.meshyPoll).not.toHaveBeenCalled();
+    expect(mock.submitModel).not.toHaveBeenCalled(); expect(mock.poll).not.toHaveBeenCalled();
+  });
 
   it("keeps readable manufacturing files downloadable with failed physical checks intact", async () => {
     const { source, image, audit } = manufacturingFixture();

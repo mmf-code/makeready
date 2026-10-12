@@ -12,7 +12,7 @@ import { GeometryPreparationError, prepareModel, type PreparedModel } from "./ge
 import { evaluateRevision } from "./harness/evaluate";
 import { makePackage } from "./make-package";
 import {
-  assertImageInput, createDesignIntelligence, createFalProvider, intelligenceProvider, isIntelligenceConfigured, MAX_IMAGE_BYTES, ProviderError, VisualCritiqueSchema,
+  assertImageInput, createDesignIntelligence, createFalProvider, createMeshyProvider, intelligenceProvider, isIntelligenceConfigured, MAX_IMAGE_BYTES, ProviderError, VisualCritiqueSchema,
   type IntelligenceResponseMetadata, type ProviderJobRef, type ProviderResult,
 } from "./providers";
 import { readArtifact, signedArtifact, storeArtifact } from "./storage";
@@ -184,7 +184,11 @@ export async function advanceJob(jobId: string): Promise<void> {
       await checkpoint({}, { spec });
     }
     const manufacturing = scale || row.data.operation === "model" || row.payload.plan?.action === "regenerate_model";
-    const provider = createFalProvider();
+    const fal = createFalProvider();
+    const modelProvider = row.data.provider === "meshy" ? "meshy" : "fal";
+    const provider = modelProvider === "meshy" ? createMeshyProvider() : fal;
+    if (modelProvider === "meshy" && !manufacturing) throw new AppError("INVALID_INPUT", "Meshy is supported only for approved concept-to-model jobs.", 422);
+    if (row.provider_ref && row.provider_ref.provider !== modelProvider) throw new AppError("INVALID_INPUT", "The saved provider receipt does not match this job's selected provider.", 422);
     let providerResult = row.payload.providerResult as ProviderResult | undefined;
 
     if (!manufacturing && row.data.operation === "concept" && row.payload.sourceImage) {
@@ -200,13 +204,13 @@ export async function advanceJob(jobId: string): Promise<void> {
     if (!scale && !row.provider_ref && !row.payload.sourceImageArtifact && !row.payload.sourceGlbArtifact) {
       // The durable in-flight bit is written before the single paid queue POST.
       const reference = manufacturing || row.payload.plan ? await sourceImage() : undefined;
-      const referenceUrl = reference ? await imageUrl(reference) : undefined;
+      const referenceUrl = reference ? modelProvider === "meshy" ? await imageData(reference) : await imageUrl(reference) : undefined;
       const webhookUrl = webhookEndpoint();
-      await checkpoint({ status: "submitting", provider: "fal", progress: 20, attempts: row.data.attempts + 1, error: null }, { dispatchInFlight: true, dispatchStage: "fal_submit" });
+      await checkpoint({ status: "submitting", provider: modelProvider, progress: 20, attempts: row.data.attempts + 1, error: null }, { dispatchInFlight: true, dispatchStage: `${modelProvider}_submit` });
       const ref = manufacturing ? await provider.submitModel({ imageUrl: referenceUrl!, webhookUrl }) : row.payload.plan ?
-        await provider.submitConceptEdit({ imageUrl: referenceUrl!, prompt: `${row.payload.plan.interpretedIntent}\nPreserve: ${row.payload.plan.preserve.join("; ")}\nChange: ${row.payload.plan.requestedChange}\n${row.payload.plan.reason}`, webhookUrl }) :
-        await provider.submitConcept({ prompt: `${spec.description}\nObject: ${spec.objectType}. Use: ${spec.use}.\nPreserve: ${spec.preserve.join("; ")}.\nSingle complete object, isolated neutral background, clear three-quarter view, suitable as a 3D reference.`, webhookUrl });
-      await checkpoint({ status: "queued", providerRequestId: ref.requestId, provider: "fal", progress: 25 }, { dispatchInFlight: false }, ref);
+        await fal.submitConceptEdit({ imageUrl: referenceUrl!, prompt: `${row.payload.plan.interpretedIntent}\nPreserve: ${row.payload.plan.preserve.join("; ")}\nChange: ${row.payload.plan.requestedChange}\n${row.payload.plan.reason}`, webhookUrl }) :
+        await fal.submitConcept({ prompt: `${spec.description}\nObject: ${spec.objectType}. Use: ${spec.use}.\nPreserve: ${spec.preserve.join("; ")}.\nSingle complete object, isolated neutral background, clear three-quarter view, suitable as a 3D reference.`, webhookUrl });
+      await checkpoint({ status: "queued", providerRequestId: ref.requestId, provider: modelProvider, progress: 25 }, { dispatchInFlight: false }, ref);
       return;
     }
 

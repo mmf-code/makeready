@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CONTRACT_VERSION = "1.1.0" as const;
+export const CONTRACT_VERSION = "1.2.0" as const;
 const Id = z.uuid();
 const Timestamp = z.iso.datetime();
 const Hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -35,7 +35,7 @@ export const GenerationJobSchema = z.object({
   id: Id, sessionId: Id, parentRevisionId: Id.nullable(), planId: Id.nullable(),
   operation: z.enum(["concept", "refinement", "model", "planning", "scale", "import"]),
   status: GenerationJobStatusSchema, progress: z.number().min(0).max(100).nullable(),
-  provider: z.enum(["fal", "openai", "local"]).nullable(), providerRequestId: z.string().nullable(),
+  provider: z.enum(["fal", "meshy", "openai", "local"]).nullable(), providerRequestId: z.string().nullable(),
   attempts: z.number().int().nonnegative(), estimatedCostUsd: z.number().nonnegative(),
   result: z.object({ revisionId: Id.optional(), planId: Id.optional() }).nullable(),
   error: ApiErrorSchema.nullable(), createdAt: Timestamp, updatedAt: Timestamp,
@@ -119,7 +119,7 @@ export const PlanRevisionInputSchema = z.object({ ...Paid, sessionId: Id, revisi
 export type PlanRevisionInput = z.infer<typeof PlanRevisionInputSchema>;
 export const ExecutePlanInputSchema = z.object({ ...Paid, planId: Id });
 export type ExecutePlanInput = z.infer<typeof ExecutePlanInputSchema>;
-export const GenerateModelInputSchema = z.object({ ...Paid, revisionId: Id });
+export const GenerateModelInputSchema = z.object({ ...Paid, revisionId: Id, provider: z.enum(["fal", "meshy"]).optional() });
 export type GenerateModelInput = z.infer<typeof GenerateModelInputSchema>;
 export const DecisionInputSchema = z.object({ revisionId: Id, decision: z.enum(["approve", "reject"]), note: z.string().max(4000).optional() });
 export type DecisionInput = z.infer<typeof DecisionInputSchema>;

@@ -4,6 +4,8 @@
 
 Alternatively, `--text --prompt ...` starts a genuine generated concept without an image upload. `--use` records the intended use in the same shared design workflow. Both routes then approve the exact concept and produce the real GLB/STL/audit package. `--image` and `--text` are mutually exclusive; text requires an explicit nonempty prompt.
 
+`--model-provider meshy` explicitly selects Meshy 7.1 for the one model submission; the default remains fal Hunyuan3D v3. Concept generation/editing remains fal. The selected provider must have its server key configured. There is no automatic provider fallback and no paid retry. Meshy accepts PNG/JPEG/WebP concept images. Its actual task credits, when available in the provider receipt, are credit units rather than verified USD; the fal billing collector does not collect Meshy costs.
+
 ## Prerequisites
 
 - The dedicated MakeReady database migration and private Storage bucket are configured on the running app.

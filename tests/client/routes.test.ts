@@ -21,6 +21,18 @@ describe("MakeReady typed route client", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("preserves explicit model provider and paid request identity in one POST", async () => {
+    const job = { ...exampleJobs.find((item) => item.status === "queued")!, operation: "model" as const, provider: "meshy" as const };
+    const fetch = vi.fn().mockResolvedValue(Response.json({ data: job }));
+    const client = createClient({ fetch, cache: false });
+    const input = { revisionId: examplePlan.parentRevisionId, provider: "meshy" as const, confirmCost: true as const, idempotencyKey: "model-meshy-stable-key" };
+    expect(await client.generateModel(input)).toEqual(job);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe(`/api/revisions/${input.revisionId}/model`);
+    expect(fetch.mock.calls[0][1].method).toBe("POST");
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(input);
+  });
+
   it("keeps online session recovery working if the optional cache fails", async () => {
     const onCacheError = vi.fn();
     const cache = { get: vi.fn(), put: vi.fn().mockRejectedValue(new Error("Quota exhausted")), remove: vi.fn(), clear: vi.fn() };

@@ -43,6 +43,7 @@ async function main() {
     const values: Record<string, string> = Object.fromEntries(accessKeys.map((key) => [key, process.env[key]!]));
     Object.assign(values, { APP_URL: origin, MAKE_BUDGET_USD: String(budget) }, languageEnvironment(false));
     if (process.env.FAL_KEY?.trim()) values.FAL_KEY = process.env.FAL_KEY;
+    if (process.env.MESHY_API_KEY?.trim()) values.MESHY_API_KEY = process.env.MESHY_API_KEY;
     console.info("configuration: BOOTSTRAP_VALIDATED preview (database and generation remain unavailable until full setup)");
     if (!apply) { console.info("mode: CHECK_ONLY (no external writes)"); return; }
     await configureProject(link.projectId, link.orgId);
@@ -106,6 +107,7 @@ async function main() {
       MAKE_BUDGET_USD: String(budget),
       APP_URL: urls.get(target)!,
     }, llmValues);
+    if (process.env.MESHY_API_KEY?.trim()) values.MESHY_API_KEY = process.env.MESHY_API_KEY;
     await syncEnvironment(link.projectId, link.orgId, target, values);
   }
   console.info("configuration: COMPLETE (deploy new source separately; existing deployments retain their environment)");

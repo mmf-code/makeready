@@ -1,8 +1,10 @@
-# MakeReady frontend contract v1.1.0
+# MakeReady frontend contract v1.2.0
 
 Source of truth: `@/lib/contracts`. Fixtures: `@/lib/contracts/fixtures` (DEV ONLY; visibly label `FIXTURE_LABEL`). Never show fixtures as generated results. `@/lib/contracts/mcp` defines MCP inputs and typed `structuredContent`.
 
 v1.1 adds `DesignSpec.process = "cnc_candidate"` alongside the two printing candidates. Display it as “CNC candidate”. This records intent, not machining certification: cutter access, undercuts, stock/fixturing and CAM/toolpaths are explicit `not_checked` audit entries. Only height is constrained during uniform scaling; width/depth remain measured outputs and may differ from the prompt.
+
+v1.2 adds optional `GenerateModelInput.provider: "fal" | "meshy"` and the job provider value `"meshy"`. Omitted provider preserves the existing fal behavior. Meshy uses fixed `meshy-7.1`; it is an explicit separate paid job, never an automatic fallback. The same optional field is accepted by MCP `generate_model`. Existing input payloads remain valid. Keep provider selection with the original idempotency key; changing provider requires a different explicit request. Meshy task credits are not USD billing evidence.
 
 ## Ownership and bootstrap
 

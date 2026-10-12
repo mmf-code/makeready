@@ -84,6 +84,12 @@ async function main() {
   if (JSON.stringify(tools.map((tool) => tool.name).sort()) !== JSON.stringify(expected)) fail("mcp_tool_contract_mismatch");
   console.info(`mcp_tools: PASS ${tools.length}`);
 
+  step = "mcp_model_provider_contract";
+  const model = tools.find((tool) => tool.name === "generate_model");
+  const providers = z.object({ properties: z.object({ provider: z.object({ enum: z.array(z.string()) }) }) }).parse(model?.inputSchema).properties.provider.enum;
+  if (JSON.stringify([...providers].sort()) !== '["fal","meshy"]') fail("model_provider_schema_mismatch");
+  console.info("mcp_model_provider_contract: PASS (no paid submission)");
+
   step = "mcp_photo_contract";
   const start = tools.find((tool) => tool.name === "start_design");
   if (JSON.stringify(start?._meta?.["openai/fileParams"]) !== '["photo"]') fail("file_parameter_metadata_missing");

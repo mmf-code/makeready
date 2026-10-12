@@ -8,6 +8,8 @@ Keep runtime values in the process environment or ignored `.env.local`, using th
 
 Required runtime values for the photo-only MVP: `FAL_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `DEMO_PASSWORD`, `SESSION_SECRET`, `MCP_SECRET`, `EXECUTOR_SECRET`. Text-to-design and feedback planning/refinement remain unavailable until either `OPENAI_API_KEY` or the explicit alternative `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` is configured. An incomplete explicitly configured custom endpoint fails configuration; it never silently switches providers. A custom endpoint defaults to `LLM_API_STYLE=chat_completions`; `responses` is also supported when the endpoint implements it. The three signing/path/executor secrets need at least 32 characters. The storage bucket remains `makeready`; the hard application budget is at most $50. `OPENAI_MODEL` is unused and is not synced.
 
+Optional `MESHY_API_KEY` enables explicit approved-concept model generation with `provider: "meshy"`. Environment sync includes it only when present. The adapter pins `meshy-7.1`, requests one textured GLB with triangle remeshing at 80,000 target polygons, and uses the same durable job, verified ingestion and preparation path. There is no automatic provider fallback. Meshy is reconciled by the configured server cron; the fal webhook does not authenticate Meshy events. [Current Meshy image-to-3D API](https://docs.meshy.ai/en/api/image-to-3d)
+
 ### Claude Haiku 5.5
 
 Set these server-only values in ignored `.env.local`:

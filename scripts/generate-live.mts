@@ -13,6 +13,7 @@ Required environment: APP_URL, DEMO_PASSWORD
 Usage: pnpm exec tsx scripts/generate-live.mts --image /path/reference.png --confirm-cost
        pnpm exec tsx scripts/generate-live.mts --text --prompt "A shallow wooden coaster" --use "CNC 3-axis candidate" --confirm-cost
 Options: --prompt "A figurine" --use "Paintable tabletop figurine" --height-mm 120 --feedback "Smaller ears, preserve face"
+         --model-provider fal|meshy (default fal; meshy pins Meshy 7.1)
          --output /path/results --max-polls 180 --poll-ms 5000 --help
 Read-only billing refresh: --collect-costs /path/run.json [--output /path/results]
 
@@ -23,7 +24,7 @@ Optional feedback invokes real configured AI planning/editing before model gener
 class RunError extends Error { constructor(readonly code: string) { super(code); } }
 const JobEvidenceSchema = z.object({
   jobId: z.uuid(), operation: z.string().max(60), status: z.string().max(60),
-  provider: z.enum(["fal", "openai", "local"]).nullable(),
+  provider: z.enum(["fal", "meshy", "openai", "local"]).nullable(),
   providerRequestId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/).nullable(),
   estimatedCostUsd: z.number().finite().nonnegative(), createdAt: z.iso.datetime(),
 });
@@ -67,7 +68,7 @@ function argumentsFor(argv: string[]) {
     if (argument === "--confirm-cost") { confirmed = true; continue; }
     if (argument === "--text") { if (textInput) throw new RunError("INVALID_ARGUMENT"); textInput = true; continue; }
     if (argument === "--help") return { help: true, confirmed, textInput, values };
-    if (!["--image","--prompt","--use","--height-mm","--feedback","--output","--max-polls","--poll-ms","--collect-costs"].includes(argument) || !argv[index+1] || argv[index+1].startsWith("--") || values.has(argument)) throw new RunError("INVALID_ARGUMENT");
+    if (!["--image","--prompt","--use","--height-mm","--feedback","--output","--max-polls","--poll-ms","--collect-costs","--model-provider"].includes(argument) || !argv[index+1] || argv[index+1].startsWith("--") || values.has(argument)) throw new RunError("INVALID_ARGUMENT");
     values.set(argument,argv[++index]);
   }
   return { help: false, confirmed, textInput, values };
@@ -176,7 +177,7 @@ async function collectCosts(jobs: JobEvidence[]): Promise<CostEvidence> {
     limitations: [
       "Only exact fal request IDs in the saved job receipts are queried. Missing IDs/events or denied billing access are not zero spending.",
       "Job budget reservations are estimates, not billed amounts. Credits, prepaid balance and top-ups are not request spending.",
-      "Total spending across all providers is unverified: LLM design, planning and visual-critique charges are not collected here.",
+      "Total spending across all providers is unverified: LLM charges and Meshy charges/credits are not collected here. Meshy credits must not be converted into assumed USD.",
       "Billing events may arrive after the model finishes. Refresh with --collect-costs; never rerun generation to obtain billing evidence.",
     ],
   };
@@ -212,6 +213,8 @@ async function main() {
   try { app = new URL(process.env.APP_URL); } catch { throw new RunError("INVALID_APP_URL"); }
   if (app.username || app.password || app.search || app.hash || app.pathname !== "/" || !(app.protocol === "https:" || app.protocol === "http:" && ["localhost","127.0.0.1","[::1]"].includes(app.hostname))) throw new RunError("INVALID_APP_URL");
   const heightMm = numberOption(options.values,"--height-mm",120,.01,2000);
+  const provider = options.values.get("--model-provider");
+  if (provider !== undefined && provider !== "fal" && provider !== "meshy") throw new RunError("INVALID_ARGUMENT");
   const maxPolls = numberOption(options.values,"--max-polls",180,1,360);
   const intervalMs = numberOption(options.values,"--poll-ms",5000,500,30_000);
   if (!Number.isInteger(maxPolls) || !Number.isInteger(intervalMs)) throw new RunError("INVALID_ARGUMENT");
@@ -296,7 +299,7 @@ async function main() {
   const decision = await client.decideRevision({ revisionId: concept.id, decision: "approve", note: "Live runner approval of this exact stored revision for model generation." });
   if (JSON.stringify([...decision.artifactHashes].sort()) !== JSON.stringify(concept.artifacts.map(value => value.sha256).sort())) throw new RunError("APPROVAL_HASH_MISMATCH");
   await stage("exact_revision_approved",{ approvedRevisionId: concept.id, decisionId: decision.id });
-  const generation = await client.generateModel({ revisionId: concept.id, confirmCost: true, idempotencyKey: receipt.idempotencyKeys.model });
+  const generation = await client.generateModel({ revisionId: concept.id, ...(provider ? { provider } : {}), confirmCost: true, idempotencyKey: receipt.idempotencyKeys.model });
   rememberJobs([generation]);
   await stage("model_started",{ modelJobId: generation.id });
   const completed = await wait(generation.id);

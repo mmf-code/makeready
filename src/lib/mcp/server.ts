@@ -120,7 +120,7 @@ export function createMakeReadyMcpServer(services: MakeReadyMcpServices, options
     { readOnlyHint: false, openWorldHint: false, idempotentHint: false });
 
   register("generate_model", "Generate model",
-    "Generate a real textured GLB and measured manufacturing package from an approved concept revision. Costs money. Returns a durable job; server preparation continues without a browser. Requires confirm_cost:true and a stable idempotencyKey. Physical checks do not certify printability.",
+    "Generate a real textured GLB and measured manufacturing package from an approved concept revision. Optional provider: fal (default Hunyuan3D v3) or meshy (fixed Meshy 7.1). Costs money. Returns a durable job; server preparation continues without a browser. Requires confirm_cost:true and a stable idempotencyKey. No automatic provider fallback. Physical checks do not certify printability.",
     McpGenerateModelInputSchema, McpToolOutputSchemas.generate_model,
     ({ confirm_cost, ...input }) => services.generateModel({ ...input, confirmCost: confirm_cost }),
     { readOnlyHint: false, openWorldHint: true });

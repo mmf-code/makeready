@@ -87,7 +87,7 @@ export function createServices(scopeId="demo") {
   async function enqueue(sessionId:string,input:{idempotencyKey:string},operation:GenerationJob["operation"],cost:number,payload:Record<string,unknown>,parentRevisionId:string|null=null,planId:string|null=null) {
     await sessionRow(sessionId);
     const timestamp=now();
-    const job=GenerationJobSchema.parse({id:randomUUID(),sessionId,parentRevisionId,planId,operation,status:"created",progress:0,provider:operation==="planning"?intelligenceProvider():operation==="scale"||operation==="concept"&&payload.sourceImage?"local":"fal",providerRequestId:null,attempts:0,estimatedCostUsd:cost,result:null,error:null,createdAt:timestamp,updatedAt:timestamp});
+    const job=GenerationJobSchema.parse({id:randomUUID(),sessionId,parentRevisionId,planId,operation,status:"created",progress:0,provider:operation==="planning"?intelligenceProvider():operation==="scale"||operation==="concept"&&payload.sourceImage?"local":payload.modelProvider==="meshy"?"meshy":"fal",providerRequestId:null,attempts:0,estimatedCostUsd:cost,result:null,error:null,createdAt:timestamp,updatedAt:timestamp});
     return GenerationJobSchema.parse(await rpc("mr_create_job",{p_scope:scopeId,p_job:job,p_payload:payload,p_key:input.idempotencyKey,p_input_hash:fingerprint(input),p_reserve_micros:Math.ceil(cost*1_000_000),p_cap_micros:budgetMicros()}));
   }
   async function startDesign(raw:StartDesignInput) {
@@ -206,12 +206,14 @@ export function createServices(scopeId="demo") {
   async function generateModel(raw:GenerateModelInput) {
     const input=GenerateModelInputSchema.parse(raw);
     const previous=await existingJob(input.idempotencyKey,input);if(previous) return previous;
-    requireProviders(true,false);
+    if(input.provider==="meshy") {
+      if(!process.env.MESHY_API_KEY?.trim()) throw new AppError("PROVIDER_UNAVAILABLE","Meshy credentials are not configured.",503);
+    } else requireProviders(true,false);
     const parent=await revision(input.revisionId);
     if(parent.kind!=="concept") throw new AppError("CONFLICT","Generate a model from an approved concept revision.",409);
     const rows=await checked(getDb().from("design_records").select("data").eq("session_id",parent.sessionId).eq("kind","decision").order("created_at"));
     assertApproved(parent,rows.map(r=>HumanDecisionSchema.parse(r.data)).filter(d=>d.revisionId===parent.id));
-    return enqueue(parent.sessionId,input,"model",5,{input,parent,sourceImage:await sourceImageFor(parent),spec:parent.spec},parent.id);
+    return enqueue(parent.sessionId,input,"model",5,{input,parent,sourceImage:await sourceImageFor(parent),spec:parent.spec,modelProvider:input.provider??"fal"},parent.id);
   }
   async function getMakePackage(revisionId:string) {
     const parent=await revision(revisionId);
