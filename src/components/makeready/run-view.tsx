@@ -9,7 +9,8 @@ import { decideRevision, executePlan, generateModel, getMakePackage, getSession,
 import { explain } from "./explain";
 import { AcceptanceList, acceptanceFor } from "./acceptance";
 import { Andon, Hat, Wordmark } from "./brand";
-import { Hamur, PAINT_ON_DARK } from "./hamur/hamur";
+import { Hamur } from "./hamur/hamur";
+import { ShapingLoader, WorkingBadge } from "./shaping-loader";
 import {
   ACTION_WORDS, artifactOf, BUILDERS, buildRunModel, SANDBOX_END, sandboxSteps, STATUS_WORDS, ZONES,
   type BuilderId, type Entry, type RunModel, type SandboxLook, type Station,
@@ -268,13 +269,15 @@ function Stage({ session, model, sandbox, selected, onSelect }: {
 
   return (
     <div className="relative min-h-[460px] overflow-hidden rounded-[22px] mr-stage border-[1.5px] border-stage-line lg:min-h-[620px]">
-      <div className="absolute inset-0">
-        <WorkCell subject={subject} print={sandboxOn ? sandbox.print : null} dims={dims} label={`${label}. ${sub}`} />
-      </div>
+      {/* The 3D cell only appears once there is a model to put in it. */}
+      {subject.kind === "glb" && (
+        <div className="absolute inset-0">
+          <WorkCell subject={subject} print={sandboxOn ? sandbox.print : null} dims={dims} label={`${label}. ${sub}`} />
+        </div>
+      )}
       {!shown && (
-        <div className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-[38%] flex-col items-center gap-2">
-          <Hamur size={280} mood={active ? "working" : "idle"} playful paint={PAINT_ON_DARK} label="Hamur" />
-          <span className="text-[14px] text-stage-2">{active ? "Shaping the first concept" : "Nothing to show yet"}</span>
+        <div className="absolute inset-0 flex items-center justify-center pt-24 pb-8">
+          <ShapingLoader job={active} />
         </div>
       )}
       {!imageUrl && shown?.kind === "concept" && (
@@ -293,9 +296,7 @@ function Stage({ session, model, sandbox, selected, onSelect }: {
           <p className="mt-1 mb-0 max-w-[34em] text-sm text-stage-2 tabular-nums">{sub}</p>
           {shown && !sandboxOn && <AcceptanceList results={acceptanceFor(session, shown.id)} />}
         </div>
-        {active && !sandboxOn && (
-          <span className="h-fit rounded-full border border-go px-3 py-1 text-[12.5px] whitespace-nowrap text-stage-ink">{STATUS_WORDS[active.status]}</span>
-        )}
+        {active && shown && !sandboxOn && <WorkingBadge job={active} status={STATUS_WORDS[active.status]} />}
       </div>
       {model.revisions.length > 0 && (
         <div className="absolute inset-x-3 bottom-3 flex gap-1.5 overflow-x-auto p-1" aria-label="Versions. Select one to look at it.">
