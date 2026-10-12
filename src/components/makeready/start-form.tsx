@@ -74,7 +74,7 @@ export function StartForm() {
   return (
     <form onSubmit={submit} className="relative flex flex-col gap-4 rounded-[20px] border-[1.5px] border-line bg-panel p-5 pt-6">
       <div className="pointer-events-auto absolute -top-[86px] right-5 hidden sm:block">
-        <Hamur size={150} mood={stage ? "working" : "idle"} cue={cue} playful label="Hamur" />
+        <Hamur size={160} mood={stage ? "working" : "idle"} cue={cue} playful wander label="Hamur" />
       </div>
       <div className="flex items-start gap-3.5">
         <label htmlFor="photo" className="grid size-[86px] shrink-0 cursor-pointer place-items-center overflow-hidden rounded-[14px] border-2 border-dashed border-ink-2 bg-panel-2 text-center text-xs leading-tight text-ink-2">
@@ -129,7 +129,7 @@ export function StartForm() {
         <div role="group" aria-label="Approve spending" className="flex flex-wrap items-center gap-3 rounded-2xl border-[1.5px] border-clay bg-clay-soft px-4 py-3">
           <p className="m-0 min-w-[16em] flex-1 text-[15px]">
             <b>{file ? "Start with your photo." : "Start with a concept image, about $0.50."}</b>{" "}
-            {file ? "Your photo becomes concept v1 and the look inspector checks it." : "The concept agent draws v1 and the look inspector checks it."} Each later paid step asks you again.
+            {file ? "Your photo becomes concept v1 for you to review." : "The concept agent draws v1 for you to review."} Each later paid step asks you again.
           </p>
           <button type="button" onClick={start} className="inline-flex min-h-12 items-center rounded-full border-[1.5px] border-tape-ink bg-tape px-5 font-extrabold text-tape-ink">Approve and start</button>
           <button type="button" onClick={() => setConfirming(false)} className="inline-flex min-h-12 items-center rounded-full border-[1.5px] border-ink bg-panel px-5 font-bold">Not now</button>

@@ -129,16 +129,18 @@ export interface HamurOptions {
   holding?: boolean;
   /** Show the dough beside Hamur when it is not held. */
   ball?: boolean;
+  /** Every few seconds, play with the dough or react on its own. */
+  wander?: boolean;
 }
 
 /** Hamur's scene over time: the clock, the gaze, the cues and who holds the dough. */
-export function useHamur({ mood = "idle", cue = null, gaze = false, speed = 1, freeze = null, holding = false, ball = true }: HamurOptions, anchor: RefObject<Element | null>) {
+export function useHamur({ mood = "idle", cue = null, gaze = false, speed = 1, freeze = null, holding = false, ball = true, wander = false }: HamurOptions, anchor: RefObject<Element | null>) {
   const [pose, setPose] = useState<Pose>(REST);
   const s = useRef({
     t: 0, last: -1, act: null as { name: Act; start: number } | null, queue: [] as Act[],
-    look: { x: 0, y: 0 }, target: { x: 0, y: 0 }, blinkAt: 2, mood, speed, holding, ball,
+    look: { x: 0, y: 0 }, target: { x: 0, y: 0 }, blinkAt: 2, mood, speed, holding, ball, wander, nextWander: 3.5,
   });
-  useEffect(() => { Object.assign(s.current, { mood, speed, ball }); }, [mood, speed, ball]);
+  useEffect(() => { Object.assign(s.current, { mood, speed, ball, wander }); }, [mood, speed, ball, wander]);
   useEffect(() => { s.current.holding = holding; }, [holding]);
 
   useEffect(() => {
@@ -159,6 +161,17 @@ export function useHamur({ mood = "idle", cue = null, gaze = false, speed = 1, f
         if (after !== undefined) st.holding = after;
         const next = st.queue.shift();
         st.act = next ? { name: next, start: st.t } : null;
+      }
+      if (st.wander && !st.act && st.t > st.nextWander && st.mood === "idle") {
+        // play on its own: a surprise, a thought, or a game with the dough
+        const held = st.holding;
+        const bag: { name: Act; then?: Act[] }[] = held
+          ? [{ name: "sekil" }, { name: "drop" }, { name: "cheer" }, { name: "nod" }, { name: "drop" }]
+          : [{ name: "poke", then: ["kavrar"] }, { name: "surprised" }, { name: "think" }, { name: "wiggle" }, { name: "kavrar" }];
+        const pick = bag[Math.floor(Math.random() * bag.length)];
+        st.act = { name: pick.name, start: st.t };
+        st.queue = pick.then ? [...pick.then] : [];
+        st.nextWander = st.t + 5 + Math.random() * 5;
       }
       setPose(frame({ t: st.t, mood: st.mood, act: st.act, look: st.look, blinkAt: st.blinkAt, holding: st.holding, ball: st.ball }));
       raf = requestAnimationFrame(tick);
@@ -218,9 +231,9 @@ export interface HamurProps extends HamurOptions {
   paint?: HamurPalette;
 }
 
-export function Hamur({ size = 160, mood = "idle", cue = null, playful = false, speed = 1, freeze = null, holding = false, ball = true, label, className = "", paint = PAINT }: HamurProps) {
+export function Hamur({ size = 160, mood = "idle", cue = null, playful = false, speed = 1, freeze = null, holding = false, ball = true, wander = false, label, className = "", paint = PAINT }: HamurProps) {
   const anchor = useRef<HTMLSpanElement>(null);
-  const h = useHamur({ mood, cue, gaze: playful, speed, freeze, holding, ball }, anchor);
+  const h = useHamur({ mood, cue, gaze: playful, speed, freeze, holding, ball, wander }, anchor);
   const art = <HamurArt pose={h.pose} size={size} paint={paint} label={playful ? undefined : label} onBall={playful ? h.poke : undefined} />;
   if (!playful) return <span ref={anchor} className={`inline-block ${className}`}>{art}</span>;
   const play = () => {

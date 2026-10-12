@@ -10,12 +10,12 @@ const WorkCell = dynamic(() => import("./three/work-cell").then((m) => m.WorkCel
 });
 
 const STEPS: { mode: CatMode; ears: number; tail: number; label: string; sub: string; print?: boolean; dims?: boolean; hold: number }[] = [
-  { mode: "sketch", ears: 1.5, tail: 0.075, label: "Concept v1", sub: "The look inspector finds the ears 31% too large.", hold: 2600 },
-  { mode: "sketch", ears: 1.0, tail: 0.075, label: "Concept v2", sub: "Change order CO-1: ears 25% smaller. Face and scarf kept.", hold: 2600 },
+  { mode: "sketch", ears: 1.5, tail: 0.075, label: "Concept v1", sub: "You say the ears are too big.", hold: 2600 },
+  { mode: "sketch", ears: 1.0, tail: 0.075, label: "Concept v2", sub: "Change order CO-1: smaller ears. Face and scarf kept.", hold: 2600 },
   { mode: "clay", ears: 1.0, tail: 0.075, label: "3D model", sub: "Sculpted from four views of v2.", hold: 2200 },
-  { mode: "measured", ears: 1.0, tail: 0.12, label: "Print shape, 120.0 mm", sub: "The print shop asked for a thicker tail. CO-2 made it 1.4 mm. Nothing else changed.", dims: true, hold: 2800 },
-  { mode: "printing", ears: 1.0, tail: 0.12, label: "Printing", sub: "Layer by layer, cured with 405 nm light.", print: true, hold: 3600 },
-  { mode: "painted", ears: 1.0, tail: 0.12, label: "Painted and inspected", sub: "A painter and her agent finished it. Caliper: 120.2 mm.", hold: 3400 },
+  { mode: "measured", ears: 1.0, tail: 0.12, label: "Print shape, 120.0 mm", sub: "Scaled to the height you asked for and measured.", dims: true, hold: 2800 },
+  { mode: "printing", ears: 1.0, tail: 0.12, label: "Printing", sub: "How a resin printer builds it, layer by layer.", print: true, hold: 3600 },
+  { mode: "painted", ears: 1.0, tail: 0.12, label: "Painted", sub: "The look a maker paints from the concept.", hold: 3400 },
 ];
 
 /** The sample figurine walking through the line. A stand-in, labeled as such. */

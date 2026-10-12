@@ -91,7 +91,14 @@ export function buildRunModel(session: DesignSession): RunModel {
   const pendingPlan = [...plans].reverse().find((p) => !executedPlanIds.has(p.id) && p.parentRevisionId === latest?.id) ?? null;
   const physicalFor = (rid: string) => [...evaluations].reverse().find((e): e is Extract<Evaluation, { kind: "physical" }> => e.kind === "physical" && e.revisionId === rid);
   const visualFor = (rid: string) => [...evaluations].reverse().find((e): e is Extract<Evaluation, { kind: "visual" }> => e.kind === "visual" && e.revisionId === rid);
-  const approved = (rid: string) => session.decisions.some((d) => d.revisionId === rid && d.decision === "approve");
+  // Only the latest decision counts, and only for the exact files it was made on.
+  const approved = (rid: string) => {
+    const rev = revisions.find((r) => r.id === rid);
+    const last = [...session.decisions].filter((d) => d.revisionId === rid).sort(byTime).at(-1);
+    if (!rev || !last || last.decision !== "approve") return false;
+    const hashes = new Set(rev.artifacts.map((a) => a.sha256));
+    return last.artifactHashes.length === 0 || last.artifactHashes.every((h) => hashes.has(h));
+  };
   const spec = session.spec;
 
   const entries: Entry[] = [];
@@ -107,7 +114,7 @@ export function buildRunModel(session: DesignSession): RunModel {
     const made = job.result?.revisionId ? versionOf(job.result.revisionId) : "";
     const base = { id: job.id, at: job.createdAt, kind: jobKind(job), cost: job.estimatedCostUsd };
     if (job.operation === "concept") {
-      entries.push({ ...base, from: "foreman", to: "concept", tool: "concept.generate", args: `{ height_mm: ${spec.targetHeightMm}, use: "${spec.use}" }`, result: jobResult(job, `Concept ${made} saved. Look inspector compared it to the request.`) });
+      entries.push({ ...base, from: "foreman", to: "concept", tool: "concept.generate", args: `{ height_mm: ${spec.targetHeightMm}, use: "${spec.use}" }`, result: jobResult(job, `Concept ${made} saved.${job.result?.revisionId && visualFor(job.result.revisionId) ? " The look inspector compared it to the request." : " No visual check ran on it."}`) });
     } else if (job.operation === "refinement") {
       const plan = plans.find((p) => p.id === job.planId);
       const co = job.planId ? coIndex.get(job.planId) ?? "change order" : "change order";
