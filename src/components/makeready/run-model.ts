@@ -1,4 +1,4 @@
-import type { ArtifactRef, DesignSession, Evaluation, GenerationJob, Revision, RevisionPlan } from "@/lib/contracts";
+import type { AcceptanceResult, ArtifactRef, DesignSession, Evaluation, GenerationJob, Revision, RevisionPlan } from "@/lib/contracts";
 import type { HatKind, StationState } from "./brand";
 
 export type BuilderId = "you" | "buyer" | "foreman" | "concept" | "look" | "geometry" | "shape" | "prep" | "network" | "print" | "printer" | "paint" | "qa" | "courier";
@@ -11,7 +11,7 @@ export const BUILDERS: Record<BuilderId, { name: string; kind: string; hat: HatK
   look: { name: "Look inspector", kind: "Vision agent", hat: "inspect" },
   geometry: { name: "Geometry agent", kind: "3D model agent", hat: "tech" },
   shape: { name: "Shape inspector", kind: "Measuring software", hat: "inspect" },
-  prep: { name: "Prep agent", kind: "Scaling and repair software", hat: "tech" },
+  prep: { name: "Prep agent", kind: "Scaling and packaging software", hat: "tech" },
   network: { name: "Maker network", kind: "Directory", hat: "foreman", sandbox: true },
   print: { name: "Kadıköy Print Studio", kind: "Print shop agent with a resin printer", hat: "maker", sandbox: true },
   printer: { name: "Resin printer 2", kind: "Machine", hat: "machine", sandbox: true },
@@ -49,6 +49,11 @@ export const STATUS_WORDS: Record<GenerationJob["status"], string> = {
 export const ACTION_WORDS: Record<RevisionPlan["action"], string> = {
   edit_concept: "Edit the concept image", scale_geometry: "Rescale the model", regenerate_model: "Make a new 3D model",
 };
+
+const METRIC_WORDS: Record<AcceptanceResult["metric"], string> = { height_mm: "Height", width_mm: "Width", depth_mm: "Depth" };
+const acceptanceLine = (a: AcceptanceResult) =>
+  a.status === "not_checked" ? `${METRIC_WORDS[a.metric]} not measured yet.`
+  : `${METRIC_WORDS[a.metric]} ${a.actualMm?.toFixed(1)} mm, asked ${a.op === "=" ? "" : `${a.op} `}${a.value} mm: ${a.status === "met" ? "met" : "not met"}.`;
 
 export interface RunModel {
   revisions: Revision[];
@@ -141,7 +146,9 @@ export function buildRunModel(session: DesignSession): RunModel {
     });
   }
   for (const e of evaluations) {
-    if (e.kind === "visual") {
+    if (e.kind === "visual" && e.engine === "not_checked") {
+      entries.push({ id: e.id, at: e.createdAt, from: "foreman", to: "you", kind: "human", tool: "look.skipped", args: `{ revision: "${versionOf(e.revisionId)}" }`, result: "The look inspector did not compare this 3D model with the concept. Turn it around in the viewer and judge it yourself." });
+    } else if (e.kind === "visual") {
       entries.push({ id: e.id, at: e.createdAt, from: "foreman", to: "look", kind: "call", tool: "look.compare", args: `{ revision: "${versionOf(e.revisionId)}" }`, result: e.summary });
     } else if (e.kind === "physical") {
       const checks = e.audit.checks;
@@ -153,8 +160,14 @@ export function buildRunModel(session: DesignSession): RunModel {
       });
     }
   }
+  const lookedAt = new Set(evaluations.filter((e) => e.kind === "visual" && e.engine !== "not_checked").map((e) => e.id));
   for (const c of session.comparisons) {
-    entries.push({ id: c.id, at: c.createdAt, from: "foreman", to: "look", kind: "call", tool: "look.compare", args: `{ parent: "${versionOf(c.parentRevisionId)}", child: "${versionOf(c.childRevisionId)}" }`, result: c.summary });
+    const args = `{ parent: "${versionOf(c.parentRevisionId)}", child: "${versionOf(c.childRevisionId)}" }`;
+    if (c.visualEvaluationIds.some((id) => lookedAt.has(id))) entries.push({ id: c.id, at: c.createdAt, from: "foreman", to: "look", kind: "call", tool: "look.compare", args, result: c.summary });
+    if (c.acceptance?.length) {
+      const missed = c.acceptance.filter((a) => a.status === "not_met").length;
+      entries.push({ id: `${c.id}:accept`, at: c.createdAt, from: "foreman", to: "shape", kind: missed ? "problem" : "call", tool: "shape.accept", args, result: c.acceptance.map(acceptanceLine).join(" ") });
+    }
   }
   for (const d of session.decisions) {
     entries.push({ id: d.id, at: d.createdAt, from: "buyer", to: "foreman", kind: "human", tool: "decide_revision", args: `{ revision: "${versionOf(d.revisionId)}", decision: "${d.decision}" }`, result: d.decision === "approve" ? `${versionOf(d.revisionId)} approved${d.note ? `: ${d.note}` : "."}` : `${versionOf(d.revisionId)} sent back${d.note ? `: ${d.note}` : "."}` });
@@ -178,7 +191,8 @@ export function buildRunModel(session: DesignSession): RunModel {
   else if (conceptJob && !isActive(conceptJob) && conceptJob.status !== "completed") stations.concept = { state: "problem", task: STATUS_WORDS[conceptJob.status] };
 
   const lastVisual = [...evaluations].reverse().find((e) => e.kind === "visual");
-  if (lastVisual?.kind === "visual") { stations.look = { state: lastVisual.uncertainties.length ? "attention" : "done", task: lastVisual.summary }; if (!activeJobs.length) tokenAt = "look"; }
+  if (lastVisual?.kind === "visual" && lastVisual.engine === "not_checked") stations.look = { state: "attention", task: latestConcept && visualFor(latestConcept.id)?.engine !== "not_checked" ? "Checked the concept. The 3D look is yours to judge" : "3D look not checked. Yours to judge" };
+  else if (lastVisual?.kind === "visual") { stations.look = { state: lastVisual.uncertainties.length ? "attention" : "done", task: lastVisual.summary }; if (!activeJobs.length) tokenAt = "look"; }
 
   const modelJob = lastJob((j) => j.operation === "model" || (j.operation === "refinement" && planOf(j)?.action === "regenerate_model"));
   if (latestManufacturing) stations.geometry = { state: "done", task: `Made ${versionOf(latestManufacturing.id)}` };
@@ -193,7 +207,9 @@ export function buildRunModel(session: DesignSession): RunModel {
     const phys = physicalFor(latestManufacturing.id);
     if (phys) {
       const fail = phys.audit.checks.filter((c) => c.status === "fail").length;
-      stations.shape = { state: fail ? "attention" : "done", task: `${phys.audit.measuredBoundsMm.height.toFixed(1)} mm. ${fail ? `${fail} check${fail > 1 ? "s" : ""} failed` : "Measured checks passed"}` };
+      const missed = (session.comparisons.find((c) => c.childRevisionId === latestManufacturing.id && c.acceptance?.length)?.acceptance ?? []).filter((a) => a.status === "not_met");
+      const verdict = missed.length ? `${METRIC_WORDS[missed[0].metric]} ${missed[0].actualMm?.toFixed(1)} mm, asked ${missed[0].value} mm` : fail ? `${fail} check${fail > 1 ? "s" : ""} failed` : "Measured checks passed";
+      stations.shape = { state: fail || missed.length ? "attention" : "done", task: `${phys.audit.measuredBoundsMm.height.toFixed(1)} mm tall. ${verdict}` };
     }
     if (!activeJobs.length) tokenAt = "shape";
     stations.print = { state: "idle", task: "Ready for a maker" };
