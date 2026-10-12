@@ -15,6 +15,9 @@ const METRIC = { height_mm: "Height", width_mm: "Width", depth_mm: "Depth" } as 
 const sizeLine = (a: AcceptanceResult) =>
   `${a.status === "met" ? "✓" : a.status === "not_met" ? "✗" : "–"} ${METRIC[a.metric]} ${a.actualMm === null ? "not measured" : `${a.actualMm.toFixed(1)} mm`}, asked ${a.value} mm`;
 
+const MISSED = /\((not_met|fail|missing)\)$/;
+const rank = (finding: string) => (MISSED.test(finding) ? 0 : /\(uncertain\)$/.test(finding) ? 1 : 2);
+
 interface Loop {
   plan: RevisionPlan; co: string; parent: string; child: string | null; verdict: Verdict;
   caughtBy: { hat: HatKind; who: string; what: string }; planProof: string;
@@ -43,12 +46,13 @@ function loopsOf(session: DesignSession, model: RunModel): Loop[] {
     const realLook = looked && looked.engine !== "not_checked" ? looked : undefined;
     const sizes = session.comparisons.flatMap((c) => c.acceptance ?? []).filter((a) => a.planId === plan.id && a.status !== "not_checked");
     const checks = [
-      ...(realLook ? realLook.changesObserved.slice(0, 3) : []),
+      // Misses first: the finding that keeps a fix open is the one people need to read.
+      ...(realLook ? [...realLook.changesObserved].sort((a, b) => rank(a) - rank(b)).slice(0, 3) : []),
       ...(realLook && !realLook.changesObserved.length ? [realLook.summary] : []),
       ...sizes.map(sizeLine),
     ];
     const verdict: Verdict = !job ? "waiting" : isActive(job) ? "working" : job.status !== "completed" ? "failed"
-      : sizes.some((a) => a.status === "not_met") || realLook?.changesObserved.some((c) => /\((not_met|fail|missing)\)$/.test(c)) ? "off" : "fixed";
+      : sizes.some((a) => a.status === "not_met") || realLook?.changesObserved.some((c) => MISSED.test(c)) ? "off" : "fixed";
     return {
       plan, co: `CO-${i + 1}`, parent, child: childId ? model.versionOf(childId) : null, verdict, caughtBy,
       planProof: planner ? jobProof(planner) : "", fixWho, fixWhat, fixProof: job ? jobProof(job) : "",
