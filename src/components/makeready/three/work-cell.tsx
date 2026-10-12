@@ -34,7 +34,7 @@ export function WorkCell({ subject, print = null, dims = null, autoRotate = true
   const wRef = useRef<HTMLSpanElement>(null);
   const subjectId = subject.kind === "glb" ? subject.id : subject.kind;
   const [failedId, setFailedId] = useState<string | null>(null);
-  const chip = "pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-clay px-2 py-px text-[13px] font-bold tabular-nums whitespace-nowrap text-clay-ink";
+  const chip = "pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-md bg-tape px-1.5 py-px text-[13px] font-bold tabular-nums whitespace-nowrap text-black";
   return (
     <div className="relative h-full w-full">
     <Canvas
@@ -129,8 +129,8 @@ function Floor() {
     const g = canvas.getContext("2d");
     if (g) {
       const grd = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-      grd.addColorStop(0, "rgba(255,255,255,0.55)");
-      grd.addColorStop(0.6, "rgba(255,255,255,0.18)");
+      grd.addColorStop(0, "rgba(255,255,255,0.16)");
+      grd.addColorStop(0.6, "rgba(255,255,255,0.05)");
       grd.addColorStop(1, "rgba(255,255,255,0)");
       g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
     }
@@ -140,22 +140,22 @@ function Floor() {
     <group>
       <mesh rotation-x={-Math.PI / 2} receiveShadow>
         <planeGeometry args={[16, 16]} />
-        <shadowMaterial opacity={0.22} />
+        <shadowMaterial opacity={0.42} />
       </mesh>
       <mesh rotation-x={-Math.PI / 2} position-y={0.001}>
         <circleGeometry args={[3.4, 64]} />
         <meshBasicMaterial map={glow} transparent depthWrite={false} />
       </mesh>
       <mesh rotation-x={-Math.PI / 2} position-y={0.002}>
-        <ringGeometry args={[1.8, 1.86, 128]} />
-        <meshBasicMaterial color="#5056d6" transparent opacity={0.55} />
+        <ringGeometry args={[1.78, 1.86, 128]} />
+        <meshBasicMaterial color="#ffd400" />
       </mesh>
       {Array.from({ length: 24 }, (_, k) => {
         const a = (k / 24) * Math.PI * 2;
         return (
           <mesh key={k} rotation-x={-Math.PI / 2} position={[Math.cos(a) * 2.2, 0.002, Math.sin(a) * 2.2]}>
             <circleGeometry args={[0.045, 16]} />
-            <meshBasicMaterial color="#5056d6" transparent opacity={0.45} />
+            <meshBasicMaterial color="#ffd400" transparent opacity={0.5} />
           </mesh>
         );
       })}
@@ -228,7 +228,7 @@ function GlbView({ url, look, topRef }: { url: string; look: GlbLook; topRef: Re
     else {
       const l = LOOKS[look];
       override.color.set(l.color); override.roughness = l.roughness; override.envMapIntensity = l.env; override.clearcoat = look === "resin" ? 0.3 : 0;
-      override.sheen = look === "resin" ? 0 : 1; override.sheenColor.set(l.color).lerp(new THREE.Color(0xffffff), 0.55); override.bumpScale = look === "resin" ? 0 : 0.6;
+      override.sheen = look === "resin" ? 0 : 1; override.sheenColor.set(l.color).lerp(new THREE.Color(0xffffff), 0.55); override.bumpScale = look === "resin" ? 0 : 1.2;
       originals.forEach((_, mesh) => { mesh.material = override; });
     }
   }, [look, originals, override, topRef]);
@@ -283,7 +283,7 @@ function Dims({ topRef, hRef, wRef }: { topRef: RefObject<number>; hRef: RefObje
   useEffect(() => () => geo.dispose(), [geo]);
   return (
     <lineSegments geometry={geo}>
-      <lineBasicMaterial color="#5056d6" />
+      <lineBasicMaterial color="#ffd400" />
     </lineSegments>
   );
 }

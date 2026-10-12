@@ -5,15 +5,15 @@ import { REST_PATH } from "./hamur/engine";
 /** The HAMUR mark: Hamur's rest pose, drawn from the same path the character animates. */
 export function Logo({ className = "h-7 w-[42px]" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 600 400" className={`text-clay ${className}`} aria-hidden="true">
-      <path fill="currentColor" d={REST_PATH} />
+    <svg viewBox="-20 -20 640 440" className={className} aria-hidden="true">
+      <path fill="#ffd400" stroke="currentColor" strokeWidth="26" strokeLinejoin="round" d={REST_PATH} />
     </svg>
   );
 }
 
 export function Wordmark({ size = "md" }: { size?: "md" | "lg" }) {
   return (
-    <span className="flex items-center gap-2.5 text-clay">
+    <span className="flex items-center gap-2.5 text-ink">
       <Logo className={size === "lg" ? "h-10 w-[60px]" : "h-7 w-[42px]"} />
       <b className={`mr-display ${size === "lg" ? "text-[40px]" : "text-[28px]"} leading-none`}>MakeReady</b>
     </span>

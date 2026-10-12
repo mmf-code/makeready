@@ -11,15 +11,14 @@
   --mrv-danger: var(--color-text-danger, #b42318);
   --mrv-warning: var(--color-text-warning, #9a5200);
   --mrv-ring: var(--color-ring-primary, #111111);
-  /* HAMUR identity: periwinkle clay on the primary button and small accents only. */
-  --mrv-tape: #5056d6;
-  --mrv-tape-ink: #ffffff;
-  --mrv-stage: #ecebe7;
-  --mrv-stage-ink: #4a4a52;
-  --mrv-go: #2e9e6e;
-  --mrv-tech: #5056d6;
-  --mrv-stop: #d9473e;
-  --mrv-wait: #e3a23a;
+  --mrv-tape: #ffd400;
+  --mrv-tape-ink: #000000;
+  --mrv-stage: #17191c;
+  --mrv-stage-ink: #c9ccd2;
+  --mrv-go: #00a35a;
+  --mrv-tech: #2f6bff;
+  --mrv-stop: #e0322f;
+  --mrv-wait: #f08a00;
 
   container-type: inline-size;
   box-sizing: border-box;
@@ -89,7 +88,7 @@
   border-radius: 999px;
   background: var(--mrv-text-2);
 }
-.mrv-dot[data-tone="foreman"] { background: #ffffff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.mrv-dot[data-tone="foreman"] { background: var(--mrv-tape); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
 .mrv-dot[data-tone="tech"] { background: var(--mrv-tech); }
 .mrv-dot[data-tone="inspect"] { background: var(--mrv-go); }
 .mrv-dot[data-tone="problem"] { background: var(--mrv-stop); }

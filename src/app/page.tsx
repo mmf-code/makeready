@@ -28,7 +28,7 @@ export default function Home() {
       <section className="grid items-stretch gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <div className="flex min-w-0 flex-col gap-5">
           <div className="flex flex-col gap-4">
-            <h1 className="mr-display m-0 text-[clamp(52px,6.6vw,96px)] text-clay">Give your idea a shape.</h1>
+            <h1 className="mr-display m-0 text-[clamp(52px,6.6vw,96px)] text-ink">Give your idea a shape.</h1>
             <p className="m-0 max-w-[34em] text-[19px] leading-relaxed text-ink">
               Describe an object once. Agents design it, critique it, keep what matters and reshape the rest, then hand print-ready files to makers. Every step is a tool call you can follow, and anything that costs money waits for your approval.
             </p>
@@ -57,7 +57,7 @@ export default function Home() {
                 <li key={t.name} className="flex min-w-0 flex-col gap-1 rounded-xl bg-panel-2 px-3.5 py-2.5">
                   <code className="font-mono text-[13px] font-medium">{t.name}</code>
                   <span className="text-[14px] text-ink-2">{t.does}</span>
-                  <span className={`mt-0.5 self-start rounded-full px-2 text-[12px] font-bold ${t.cost.startsWith("Paid") ? "bg-clay text-clay-ink" : "border-[1.2px] border-line"}`}>{t.cost}</span>
+                  <span className={`mt-0.5 self-start rounded-full px-2 text-[12px] font-bold ${t.cost.startsWith("Paid") ? "bg-tape text-black" : "border-[1.2px] border-line"}`}>{t.cost}</span>
                 </li>
               ))}
             </ul>

@@ -29,7 +29,7 @@ export function plushFibre(): THREE.CanvasTexture {
   g.putImageData(img, 0, 0);
   fibre = new THREE.CanvasTexture(canvas);
   fibre.wrapS = fibre.wrapT = THREE.RepeatWrapping;
-  fibre.repeat.set(5, 5);
+  fibre.repeat.set(7, 7);
   return fibre;
 }
 const WHITE = new THREE.Color(0xffffff);
@@ -42,7 +42,7 @@ export function createToyCat(clip: THREE.Plane) {
   const v2 = (a: number[][]) => a.map(([x, y]) => new THREE.Vector2(x, y));
 
   function part(geo: THREE.BufferGeometry, paint: number, o: { pos?: number[]; scale?: number[]; rot?: number[]; parent?: THREE.Object3D; outline?: number; noOutline?: boolean; role?: Role; transparent?: boolean } = {}) {
-    const mat = new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.5, clippingPlanes: [clip], clipShadows: true, transparent: !!o.transparent, bumpMap: plushFibre(), bumpScale: 0.6 });
+    const mat = new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.5, clippingPlanes: [clip], clipShadows: true, transparent: !!o.transparent, bumpMap: plushFibre(), bumpScale: 1.2 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true; mesh.receiveShadow = true;
     if (o.pos) mesh.position.set(o.pos[0], o.pos[1], o.pos[2]);
@@ -133,7 +133,7 @@ export function createToyCat(clip: THREE.Plane) {
         m.sheen = plush ? 1 : 0;
         m.sheenRoughness = 0.5;
         m.sheenColor.copy(m.color).lerp(WHITE, 0.55);
-        m.bumpScale = plush ? 0.6 : 0;
+        m.bumpScale = plush ? 1.2 : 0;
         if (plush) { rough = Math.max(rough, 0.9); coat = 0; }
         m.roughness = rough; m.clearcoat = coat; m.envMapIntensity = env; m.opacity = opacity; p.mesh.visible = visible;
         if (p.role === "glint") { m.emissive.set(sketch || mix > 0.9 ? 0xffffff : 0x000000); m.emissiveIntensity = 0.6; }

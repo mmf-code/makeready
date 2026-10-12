@@ -41,10 +41,10 @@ export function HeroCell() {
       </div>
       <div className="pointer-events-none absolute inset-x-[18px] top-4 flex justify-between gap-3">
         <div>
-          <h2 className="mr-heading text-[clamp(22px,2vw,28px)] text-ink">{s.label}</h2>
+          <h2 className="mr-heading text-[clamp(22px,2vw,28px)] text-stage-ink">{s.label}</h2>
           <p className="mt-1 mb-0 max-w-[30em] text-sm text-stage-2">{s.sub}</p>
         </div>
-        <span className="h-fit rounded-full border border-dashed border-stage-2 bg-panel/70 px-3 py-1 text-[12.5px] whitespace-nowrap text-stage-2">Sample, not generated</span>
+        <span className="h-fit rounded-full border border-dashed border-stage-2 px-3 py-1 text-[12.5px] whitespace-nowrap text-stage-2">Sample, not generated</span>
       </div>
     </div>
   );

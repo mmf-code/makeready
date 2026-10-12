@@ -119,7 +119,7 @@ export function StartForm() {
 
       <div className="flex flex-wrap items-center gap-4 border-t-[1.5px] border-dashed border-line pt-4">
         <button type="submit" disabled={!!stage || confirming || !message.trim()}
-          className="inline-flex min-h-[52px] items-center gap-2 rounded-full border-[1.5px] border-clay bg-clay px-6 text-[17px] font-extrabold text-clay-ink disabled:cursor-wait disabled:opacity-60">
+          className="inline-flex min-h-[52px] items-center gap-2 rounded-full border-[1.5px] border-tape-ink bg-tape px-6 text-[17px] font-extrabold text-tape-ink disabled:cursor-wait disabled:opacity-60">
           <svg viewBox="0 0 16 16" className="size-4" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor" /></svg>
           {stage ?? "Start the run"}
         </button>
@@ -131,7 +131,7 @@ export function StartForm() {
             <b>{file ? "Start with your photo." : "Start with a concept image, about $0.50."}</b>{" "}
             {file ? "Your photo becomes concept v1 and the look inspector checks it." : "The concept agent draws v1 and the look inspector checks it."} Each later paid step asks you again.
           </p>
-          <button type="button" onClick={start} className="inline-flex min-h-12 items-center rounded-full border-[1.5px] border-clay bg-clay px-5 font-extrabold text-clay-ink">Approve and start</button>
+          <button type="button" onClick={start} className="inline-flex min-h-12 items-center rounded-full border-[1.5px] border-tape-ink bg-tape px-5 font-extrabold text-tape-ink">Approve and start</button>
           <button type="button" onClick={() => setConfirming(false)} className="inline-flex min-h-12 items-center rounded-full border-[1.5px] border-ink bg-panel px-5 font-bold">Not now</button>
         </div>
       )}

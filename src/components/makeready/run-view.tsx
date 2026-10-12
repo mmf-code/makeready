@@ -140,7 +140,7 @@ function TopBar({ title, sub }: { title: string; sub: string }) {
       </div>
       <nav className="ml-auto flex flex-wrap gap-2" aria-label="Run">
         <Link href="/demo" className="inline-flex min-h-11 items-center rounded-full border-[1.5px] border-clay bg-panel px-4 font-bold text-clay">Scripted full run</Link>
-        <Link href="/" className="inline-flex min-h-11 items-center rounded-full border-[1.5px] border-clay bg-clay px-4 font-bold text-clay-ink">New run</Link>
+        <Link href="/" className="inline-flex min-h-11 items-center rounded-full border-[1.5px] border-tape-ink bg-tape px-4 font-bold text-tape-ink">New run</Link>
       </nav>
     </header>
   );
@@ -192,7 +192,7 @@ function CallRow({ entry: e, fresh }: { entry: Entry; fresh: boolean }) {
   const from = BUILDERS[e.from], to = BUILDERS[e.to];
   const bar = e.kind === "change" ? "mr-hazard" : e.kind === "problem" ? "bg-stop" : "";
   return (
-    <li className={`relative flex flex-col gap-1 rounded-xl p-2.5 pl-3 ${e.kind === "human" ? "border-[1.5px] border-ink" : fresh ? "bg-[color-mix(in_srgb,var(--clay)_10%,var(--panel))]" : "bg-panel-2"}`}>
+    <li className={`relative flex flex-col gap-1 rounded-xl p-2.5 pl-3 ${e.kind === "human" ? "border-[1.5px] border-ink" : fresh ? "bg-[color-mix(in_srgb,var(--tape)_22%,var(--panel))]" : "bg-panel-2"}`}>
       {bar && <span aria-hidden="true" className={`absolute top-2.5 bottom-2.5 left-0 w-1 rounded-r ${bar}`} />}
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px] font-semibold">
         <span className="inline-flex items-center gap-1"><Hat kind={from.hat} className="size-4 text-ink" />{from.name}</span>
@@ -203,7 +203,7 @@ function CallRow({ entry: e, fresh }: { entry: Entry; fresh: boolean }) {
       <p className="m-0 text-[13px] text-ink-2">{e.result}</p>
       {(e.kind === "change" || e.kind === "problem" || e.kind === "running" || e.cost || e.sandbox) && (
         <div className="flex flex-wrap gap-1.5">
-          {e.kind === "change" && <Tag className="border-coral bg-coral text-white">Change order</Tag>}
+          {e.kind === "change" && <Tag className="border-black bg-tape text-black">Change order</Tag>}
           {e.kind === "problem" && <Tag className="border-stop bg-stop text-white">Problem</Tag>}
           {e.kind === "running" && <Tag className="border-go text-ink">Running</Tag>}
           {!!e.cost && <Tag>{`~${money(e.cost)}`}</Tag>}
@@ -280,7 +280,7 @@ function Stage({ session, model, sandbox, selected, onSelect }: {
         <p className="absolute inset-x-6 top-1/2 m-0 -translate-y-1/2 text-center text-sm text-stage-2">The concept image link is refreshing. It appears with the next update.</p>
       )}
       {imageUrl && subject.kind === "none" && (
-        <figure className="absolute top-1/2 left-1/2 m-0 w-[min(70%,380px)] -translate-x-1/2 -translate-y-[46%] rotate-[-1.5deg] rounded-lg bg-white p-3 shadow-[0_18px_40px_rgba(28,28,33,0.18)]">
+        <figure className="absolute top-1/2 left-1/2 m-0 w-[min(70%,380px)] -translate-x-1/2 -translate-y-[46%] rotate-[-1.5deg] rounded-lg bg-white p-3 shadow-[0_18px_40px_rgba(0,0,0,0.5)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={imageUrl} alt={`Concept image ${model.versionOf(shown!.id)}`} className="block aspect-square w-full rounded object-cover" />
           {visual && <figcaption className="pt-2 text-[13px] leading-snug text-black">{visual.summary}</figcaption>}
@@ -303,7 +303,7 @@ function Stage({ session, model, sandbox, selected, onSelect }: {
             const why = r.kind === "manufacturing" ? "3D model, measured" : plan ? plan.requestedChange : r.parentRevisionId ? "Revised concept" : "First concept";
             return (
               <button key={r.id} type="button" aria-pressed={on} onClick={() => onSelect(r.id === model.latest?.id ? null : r.id)}
-                className={`flex min-h-11 max-w-[220px] shrink-0 flex-col items-start gap-px rounded-xl border-[1.2px] bg-panel/90 backdrop-blur-sm px-2.5 py-1.5 text-left ${on ? "border-clay shadow-[inset_0_0_0_1px_var(--clay)]" : "border-stage-line"}`}>
+                className={`flex min-h-11 max-w-[220px] shrink-0 flex-col items-start gap-px rounded-xl border-[1.2px] bg-[rgba(23,25,28,0.82)] px-2.5 py-1.5 text-left ${on ? "border-tape shadow-[inset_0_0_0_1px_var(--tape)]" : "border-stage-line"}`}>
                 <b className="text-[13px]">{model.versionOf(r.id)}{model.approved(r.id) ? ", approved" : ""}</b>
                 <span className="max-w-[200px] truncate text-xs text-stage-2">{why}</span>
               </button>
@@ -419,7 +419,7 @@ function NextStep({ session, model, refresh, sandbox }: {
     body = (
       <Row title={`${model.versionOf(latest.id)} is measured and packed`}>
         {pkg ? (
-          <a href={pkg.downloadUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center rounded-full border-[1.5px] border-clay bg-clay px-5 font-extrabold text-clay-ink">Download the make package</a>
+          <a href={pkg.downloadUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center rounded-full border-[1.5px] border-tape-ink bg-tape px-5 font-extrabold text-tape-ink">Download the make package</a>
         ) : (
           <Btn primary onClick={() => fetchPackage(latest)} disabled={!!busy}>{busy === "package" ? "Preparing the link" : "Get the make package"}</Btn>
         )}
@@ -434,7 +434,7 @@ function NextStep({ session, model, refresh, sandbox }: {
   }
 
   return (
-    <section aria-labelledby="step-title" className="flex flex-col gap-3 rounded-[22px] border-[1.5px] border-clay bg-panel px-5 py-4">
+    <section aria-labelledby="step-title" className="flex flex-col gap-3 rounded-[22px] border-[1.5px] border-ink bg-panel px-5 py-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
         <h2 id="step-title" className="mr-heading text-[22px] text-ink">Your call</h2>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-clay-soft px-3 py-1 text-[13px] font-bold text-clay-deep">
@@ -466,7 +466,7 @@ function Row({ title, children }: { title: string; children: ReactNode }) {
 function Btn({ children, primary, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { primary?: boolean }) {
   return (
     <button type="button" {...props}
-      className={`inline-flex min-h-12 items-center rounded-full border-[1.5px] px-5 font-bold disabled:cursor-wait disabled:opacity-55 ${primary ? "border-clay bg-clay font-extrabold text-clay-ink" : "border-ink bg-panel text-ink"}`}>
+      className={`inline-flex min-h-12 items-center rounded-full border-[1.5px] px-5 font-bold disabled:cursor-wait disabled:opacity-55 ${primary ? "border-tape-ink bg-tape font-extrabold text-tape-ink" : "border-ink bg-panel text-ink"}`}>
       {children}
     </button>
   );
@@ -492,7 +492,7 @@ function ProductionLine({ stations, tokenAt, sandboxStarted, sandboxFinished }: 
     <section aria-labelledby="line-title" className="flex flex-col gap-3 rounded-[22px] border-[1.5px] border-line bg-panel px-[18px] pt-4 pb-3.5">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
         <h2 id="line-title" className="mr-heading text-[22px]">Production line</h2>
-        <p className="m-0 max-w-[62em] text-[13.5px] text-ink-2">Every station is a builder with its own agent. They take jobs, push work back when something will not make, and report problems through tool calls. Hamur carries your idea, the yellow pebble, to whichever station has it now.</p>
+        <p className="m-0 max-w-[62em] text-[13.5px] text-ink-2">Every station is a builder with its own agent. They take jobs, push work back when something will not make, and report problems through tool calls. Hamur carries your idea, the stone it holds, to whichever station has it now.</p>
       </div>
       <div className="overflow-x-auto pb-1">
         <div ref={track} className="relative flex min-w-[1240px] gap-2.5 pb-[30px]">

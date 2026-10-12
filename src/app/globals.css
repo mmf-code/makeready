@@ -11,41 +11,41 @@
  * keeps the host's own background and font.
  */
 :root {
-  --floor: #f3f3f1;
+  --floor: #e7e8e3;
   --panel: #ffffff;
-  --panel-2: #f1f0ed;
-  --ink: #1c1c21;
-  --ink-2: #63636c;
-  --line: #e1e0dc;
-  --clay: #5056d6;
+  --panel-2: #f2f3ef;
+  --ink: #000000;
+  --ink-2: #474b52;
+  --line: #c9cac3;
+  /* brand: black ink with safety yellow, as before the logo; Hamur keeps its shape */
+  --clay: #000000;
   --clay-ink: #ffffff;
-  --clay-soft: #e7e8fb;
-  --clay-deep: #3a3fb0;
-  --coral: #ee6a5a;
-  --sun: #ffd21f;
-  --sun-ink: #1c1c21;
-  --sun-soft: #fff3c4;
-  --sun-edge: #e0ae00;
+  --clay-soft: #fff3b0;
+  --clay-deep: #000000;
+  --coral: #ffd400;
+  --sun: #ffd400;
+  --sun-ink: #000000;
+  --sun-soft: #fff3b0;
+  --sun-edge: #d9b200;
   --stone: #d6d2ca;
-  --stage-top: #ffffff;
-  --stage-bottom: #e7e6e2;
-  --stage-ink: #1c1c21;
-  --stage-2: #6b6b73;
-  --stage-line: #d9d8d3;
-  --go: #2e9e6e;
-  --wait: #e3a23a;
-  --stop: #d9473e;
+  --stage-top: #23262b;
+  --stage-bottom: #131518;
+  --stage-ink: #f2f2ee;
+  --stage-2: #a9aeb6;
+  --stage-line: #3a3f46;
+  --go: #00a35a;
+  --wait: #f08a00;
+  --stop: #e0322f;
   --hat-foreman: #ffffff;
-  --hat-design: #ee6a5a;
-  --hat-inspect: #2e9e6e;
-  --hat-tech: #5056d6;
-  --hat-maker: #e3a23a;
-  --hat-courier: #f08c4a;
-  --hat-buyer: #b8b8c2;
+  --hat-design: #ff5da2;
+  --hat-inspect: #00a35a;
+  --hat-tech: #2f6bff;
+  --hat-maker: #ffd400;
+  --hat-courier: #ff7a00;
+  --hat-buyer: #b9bcc4;
   --uv: #8b5cff;
-  /* legacy aliases */
-  --tape: var(--clay);
-  --tape-ink: var(--clay-ink);
+  --tape: #ffd400;
+  --tape-ink: #000000;
 
   --background: var(--floor);
   --foreground: var(--ink);
@@ -53,60 +53,54 @@
   --card-foreground: var(--ink);
   --popover: var(--panel);
   --popover-foreground: var(--ink);
-  --primary: var(--clay);
-  --primary-foreground: var(--clay-ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--panel);
   --secondary: var(--panel-2);
   --secondary-foreground: var(--ink);
   --muted: var(--panel-2);
   --muted-foreground: var(--ink-2);
-  --accent: var(--clay-soft);
-  --accent-foreground: var(--clay-deep);
+  --accent: var(--tape);
+  --accent-foreground: var(--tape-ink);
   --destructive: var(--stop);
   --border: var(--line);
   --input: var(--line);
-  --ring: var(--clay);
-  --radius: 1rem;
+  --ring: var(--ink);
+  --radius: 0.875rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --floor: #141418;
-    --panel: #1d1d23;
-    --panel-2: #26262d;
-    --ink: #f1f1f4;
-    --ink-2: #a5a5af;
-    --line: #34343c;
-    --clay: #7c81f2;
-    --clay-ink: #0f1033;
-    --clay-soft: #2a2c57;
-    --clay-deep: #b9bcff;
+    --floor: #131518;
+    --panel: #1d2024;
+    --panel-2: #24282d;
+    --ink: #f3f3ef;
+    --ink-2: #a6abb3;
+    --line: #363b42;
+    --clay: #f3f3ef;
+    --clay-ink: #000000;
+    --clay-soft: #3a3418;
+    --clay-deep: #f3f3ef;
     --sun-soft: #3a3418;
-    --stage-top: #2c2d35;
-    --stage-bottom: #1b1b21;
-    --stage-ink: #f1f1f4;
-    --stage-2: #a5a5af;
-    --stage-line: #3a3a44;
+    --stage-top: #1b1d21;
+    --stage-bottom: #0d0f11;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"],
 .dark {
-  --floor: #141418;
-  --panel: #1d1d23;
-  --panel-2: #26262d;
-  --ink: #f1f1f4;
-  --ink-2: #a5a5af;
-  --line: #34343c;
-  --clay: #7c81f2;
-  --clay-ink: #0f1033;
-  --clay-soft: #2a2c57;
-  --clay-deep: #b9bcff;
+  --floor: #131518;
+  --panel: #1d2024;
+  --panel-2: #24282d;
+  --ink: #f3f3ef;
+  --ink-2: #a6abb3;
+  --line: #363b42;
+  --clay: #f3f3ef;
+  --clay-ink: #000000;
+  --clay-soft: #3a3418;
+  --clay-deep: #f3f3ef;
   --sun-soft: #3a3418;
-  --stage-top: #2c2d35;
-  --stage-bottom: #1b1b21;
-  --stage-ink: #f1f1f4;
-  --stage-2: #a5a5af;
-  --stage-line: #3a3a44;
+  --stage-top: #1b1d21;
+  --stage-bottom: #0d0f11;
   color-scheme: dark;
 }
 
@@ -179,7 +173,7 @@
     font-family: var(--font-sans);
   }
   .mr-app :focus-visible {
-    outline: 3px solid var(--clay);
+    outline: 3px solid var(--ink);
     outline-offset: 3px;
   }
   .mr-app h1,
@@ -222,12 +216,11 @@
     color: var(--stage-ink);
   }
   .mr-hazard {
-    background: var(--stop);
+    background: repeating-linear-gradient(-45deg, var(--tape) 0 6px, #000 6px 12px);
   }
   /* The route between builders: a row of clay pellets. */
   .mr-tape {
-    background: radial-gradient(circle, var(--clay) 4.5px, transparent 5px) 0 50% / 20px 100% repeat-x;
-    opacity: 0.85;
+    background: repeating-linear-gradient(90deg, var(--tape) 0 46px, transparent 46px 54px);
   }
   .mr-paper {
     background: #f6f6f4;
