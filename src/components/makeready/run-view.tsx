@@ -8,7 +8,7 @@ import type { DesignSession, MakePackageResult, Revision, RevisionPlan } from "@
 import { decideRevision, executePlan, generateModel, getMakePackage, getSession, MakeReadyClientError, planRevision } from "@/lib/client";
 import { explain } from "./explain";
 import { Andon, Hat, Wordmark } from "./brand";
-import { Hamur } from "./hamur/hamur";
+import { Hamur, PAINT_ON_DARK } from "./hamur/hamur";
 import {
   ACTION_WORDS, artifactOf, BUILDERS, buildRunModel, SANDBOX_END, sandboxSteps, STATUS_WORDS, ZONES,
   type BuilderId, type Entry, type RunModel, type SandboxLook, type Station,
@@ -272,7 +272,7 @@ function Stage({ session, model, sandbox, selected, onSelect }: {
       </div>
       {!shown && (
         <div className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-[38%] flex-col items-center gap-2">
-          <Hamur size={280} mood={active ? "working" : "idle"} playful label="Hamur" />
+          <Hamur size={280} mood={active ? "working" : "idle"} playful paint={PAINT_ON_DARK} label="Hamur" />
           <span className="text-[14px] text-stage-2">{active ? "Shaping the first concept" : "Nothing to show yet"}</span>
         </div>
       )}
