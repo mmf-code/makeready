@@ -66,6 +66,69 @@ describe("bounded design intelligence", () => {
     expect(createResponse).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    [{ status: "incomplete" }, "INTELLIGENCE_INCOMPLETE"],
+    [{ output_text: undefined }, "INTELLIGENCE_NO_TEXT"],
+    [{ output_text: "  \n " }, "INTELLIGENCE_NO_TEXT"],
+    [{ output_text: "private-provider-content is not JSON" }, "INTELLIGENCE_INVALID_JSON"],
+    [{ output_text: JSON.stringify({ ...spec, preserve: "private-provider-content" }) }, "INTELLIGENCE_SCHEMA_MISMATCH"],
+  ])("records received usage before returning a finite diagnostic %s", async (override, diagnosticCode) => {
+    const createResponse = vi.fn().mockResolvedValue({ ...response(spec), ...override });
+    const onResponse = vi.fn();
+    const failure = await createDesignIntelligence({ createResponse, onResponse }).designSpec({ description: "A cat" }).catch(error => error);
+    expect(failure).toMatchObject({ kind: "invalid_result", diagnosticCode });
+    expect(failure.message).not.toContain("private-provider-content");
+    expect(JSON.stringify(failure)).not.toContain("private-provider-content");
+    expect(onResponse).toHaveBeenCalledWith(expect.objectContaining({ responseId: "resp_123", inputTokens: 150, outputTokens: 100 }));
+    expect(createResponse).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["edit_concept", "regenerate_model"])("rejects native %s with a non-null preserved height without repairing or retrying", async (action) => {
+    const draft = { requestedChange: "Reduce ears", interpretedIntent: "Smaller ears", preserve: ["original 120 mm height", "face"], action,
+      reason: "Appearance feedback", expectedDifferences: ["Smaller ears"], targetHeightMm: 120 };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({
+      id: "msg_native_invalid_plan", type: "message", model: "claude-haiku-5-5", stop_reason: "end_turn",
+      content: [{ type: "text", text: JSON.stringify(draft) }], usage: { input_tokens: 2513, output_tokens: 943 },
+    }), { headers: { "content-type": "application/json", "request-id": "req_native_invalid_plan" } }));
+    const onResponse = vi.fn();
+    await expect(createDesignIntelligence({ apiStyle: "anthropic", model: "claude-haiku-5-5", apiKey: "sk-ant-test-fixture", fetch, onResponse })
+      .planRevision({ spec, feedback: "Smaller ears; preserve original height" })).rejects.toMatchObject({ kind: "invalid_result", diagnosticCode: "REVISION_ACTION_TARGET_MISMATCH" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(onResponse).toHaveBeenCalledWith(expect.objectContaining({ operation: "revision_plan", responseId: "msg_native_invalid_plan", inputTokens: 2513, outputTokens: 943, totalTokens: 3456 }));
+    const sent = JSON.parse(fetch.mock.calls[0][1]!.body as string);
+    expect(sent.system).toContain("For edit_concept and regenerate_model, targetHeightMm MUST be null");
+    expect(sent.system).toContain("Do not copy spec.targetHeightMm");
+    expect(sent.output_config.format.schema.properties.targetHeightMm.description).toContain("even when the original height is preserved");
+    expect(draft.targetHeightMm).toBe(120);
+    expect(draft.action).toBe(action);
+    expect(sdk.responses).not.toHaveBeenCalled(); expect(sdk.chat).not.toHaveBeenCalled();
+  });
+
+  it("returns a safe schema diagnostic for a received native plan without logging its values", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({
+      id: "msg_native_schema", type: "message", model: "claude-haiku-5-5", stop_reason: "end_turn",
+      content: [{ type: "text", text: JSON.stringify({ requestedChange: "private-native-value", preserve: "wrong-type-private-native-value", targetHeightMm: null }) }],
+      usage: { input_tokens: 20, output_tokens: 10 },
+    }), { headers: { "content-type": "application/json", "request-id": "req_native_schema" } }));
+    const onResponse = vi.fn();
+    const failure = await createDesignIntelligence({ apiStyle: "anthropic", model: "claude-haiku-5-5", apiKey: "sk-ant-test-fixture", fetch, onResponse })
+      .planRevision({ spec, feedback: "Smaller ears" }).catch(error => error);
+    expect(failure).toMatchObject({ kind: "invalid_result", diagnosticCode: "INTELLIGENCE_SCHEMA_MISMATCH" });
+    expect(failure.message).not.toContain("private-native-value");
+    expect(JSON.stringify(failure)).not.toContain("private-native-value");
+    expect(failure).not.toHaveProperty("issues"); expect(failure).not.toHaveProperty("raw");
+    expect(onResponse).toHaveBeenCalledTimes(1); expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a valid new scale target exactly as the agent selected it", async () => {
+    const draft = { requestedChange: "Increase height to 150 mm", interpretedIntent: "Scale uniformly", preserve: ["appearance"], action: "scale_geometry",
+      reason: "Explicit new height", expectedDifferences: ["150 mm high"], targetHeightMm: 150 };
+    const createResponse = vi.fn().mockResolvedValue(response(draft));
+    const result = await createDesignIntelligence({ createResponse }).planRevision({ spec, feedback: "Increase height to 150 mm" });
+    expect(result.targetHeightMm).toBe(150); expect(result.action).toBe("scale_geometry");
+    expect(createResponse).toHaveBeenCalledTimes(1);
+  });
+
   it("does not turn a refusal into a successful design", async () => {
     const createResponse = vi.fn().mockResolvedValue({ ...response(spec), output: [{ type: "message", content: [{ type: "refusal", refusal: "Unable" }] }] });
     await expect(createDesignIntelligence({ createResponse }).designSpec({ description: "A cat" })).rejects.toMatchObject({ kind: "invalid_result" });

@@ -44,6 +44,8 @@ Call `planRevision()` first. Display `requestedChange`, `interpretedIntent`, `pr
 
 Visual, physical, human evaluations are separate cards. No combined score. Show every `not_checked` and limitation. Compare genuine parent/child models with identical front, side and three-quarter camera settings, orbit synchronized where possible. Height is normalized in both: bbox/triangle changes do not establish ear size or face preservation. Concept-only comparisons have `geometryDelta: null`.
 
+After `manufacturing → refined concept → manufacturing`, the new model has both its direct concept comparison and an additional comparison to the nearest earlier manufacturing ancestor. Revision lineage is unchanged. For a 3D-to-3D comparison choose the record with actual `geometryDelta` and load its two revision IDs. A camera preset is a requested presentation, not proof that automated matched renders ran. Planner failures can include finite `error.details.diagnosticCode` values; show them with the existing failed job, without resubmitting it.
+
 GLB preserves textures/materials and uses meters/Y-up. STL is geometry only in mm/Z-up. Use `model_glb` in the viewer, not STL. Source GLB is independently preserved; normalized GLB is reserialized. No printability certification.
 
 ## Errors the UI must surface

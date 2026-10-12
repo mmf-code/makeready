@@ -148,6 +148,6 @@ export function inspectGeometry(soup: TriangleSoup, targetHeightMm: number): Geo
     unreferencedVertexCount: soup.unreferencedVertexCount,
     boundaryEdgeCount, nonManifoldEdgeCount, nonManifoldVertexCount, inconsistentWindingEdgeCount,
     degenerateTriangleCount, duplicateTriangleCount, connectedComponentCount, issues,
-    notChecked: ["Wall thickness", "Self-intersections", "Overhangs and supports", "Structural strength", "Material suitability", "Printer-specific tolerances"],
+    notChecked: ["wall_thickness", "self_intersections", "supports", "material_strength", "material_suitability", "machine_tolerances"],
   };
 }

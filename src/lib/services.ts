@@ -165,7 +165,7 @@ export function createServices(scopeId="demo") {
     } catch(error) {
       const knownTermination=error instanceof ProviderError && ["configuration","invalid_result","unsafe_url","asset_too_large","provider_failure"].includes(error.kind);
       const unknown=error instanceof ProviderError && error.kind==="submission_unknown" || dispatchInFlight&&!knownTermination;
-      const mapped=unknown?new AppError("SUBMISSION_UNKNOWN","Planning submission outcome could not be checkpointed; do not repeat the paid request.",409):error instanceof AppError?error:new AppError("PROVIDER_FAILED","The design planner could not produce a valid plan.",502);
+      const mapped=unknown?new AppError("SUBMISSION_UNKNOWN","Planning submission outcome could not be checkpointed; do not repeat the paid request.",409):error instanceof AppError?error:new AppError("PROVIDER_FAILED","The design planner could not produce a valid plan.",502,false,error instanceof ProviderError?{providerErrorKind:error.kind,diagnosticCode:error.diagnosticCode??null}:undefined);
       // A saved plan or a pre-dispatch storage read can resume safely. Never turn
       // a transient finalization failure into a new paid planning request.
       if(!unknown&&mapped.retryable) {

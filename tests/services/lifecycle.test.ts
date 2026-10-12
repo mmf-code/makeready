@@ -324,4 +324,16 @@ describe("application lifecycle against the actual migration", () => {
     expect(mock.plan).toHaveBeenCalledTimes(1);
     expect(await rows("select reserved_micros::int as reserved,spent_micros::int as spent from public.make_budgets")).toEqual([{ reserved: 100_000, spent: 0 }]);
   });
+
+  it("persists a safe planner diagnostic without raw provider text or automatic resubmission", async () => {
+    const revision = await parent(), services = createServices(scope);
+    const input = { sessionId: revision.sessionId, revisionId: revision.id, feedback: "Thicker body, preserve height", confirmCost: true as const, idempotencyKey: randomUUID() };
+    mock.plan.mockRejectedValueOnce(new ProviderError("sensitive vendor response must not be surfaced", "invalid_result", undefined, "REVISION_ACTION_TARGET_MISMATCH"));
+    await expect(services.planRevision(input)).rejects.toMatchObject({ code: "PROVIDER_FAILED", details: { diagnosticCode: "REVISION_ACTION_TARGET_MISMATCH" } });
+    const saved = (await services.getSession(revision.sessionId)).jobs[0];
+    expect(saved).toMatchObject({ status: "failed", error: { details: { providerErrorKind: "invalid_result", diagnosticCode: "REVISION_ACTION_TARGET_MISMATCH" } } });
+    expect(JSON.stringify(saved)).not.toContain("sensitive vendor");
+    await expect(services.planRevision(input)).rejects.toMatchObject({ code: "PROVIDER_FAILED" });
+    expect(mock.plan).toHaveBeenCalledTimes(1);
+  });
 });

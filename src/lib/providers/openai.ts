@@ -76,7 +76,7 @@ export const RevisionPlanDraftSchema = z.object({
   action: z.enum(["edit_concept", "scale_geometry", "regenerate_model"]),
   reason: z.string().min(1).max(2000),
   expectedDifferences: z.array(z.string().min(1).max(500)).min(1).max(20),
-  targetHeightMm: z.number().positive().max(2000).nullable(),
+  targetHeightMm: z.number().positive().max(2000).nullable().describe("New target height in millimetres ONLY for action=scale_geometry; then a positive explicitly requested or directly calculable height is required. For edit_concept or regenerate_model this field MUST be null, even when the original height is preserved. Never copy the parent/spec height here to indicate preservation."),
 }).strict();
 export type RevisionPlanDraft = z.infer<typeof RevisionPlanDraftSchema>;
 
@@ -197,14 +197,14 @@ export function createDesignIntelligence(options: {
     if (response.httpStatus !== undefined && response.httpStatus >= 400) throw intelligenceRequestError({ status: response.httpStatus });
     const refusal = z.array(z.object({ type: z.string(), content: z.array(z.object({ type: z.string() }).passthrough()).optional() }).passthrough()).safeParse(response.output);
     if (response.status !== "completed" || refusal.success && refusal.data.some((item) => item.content?.some((content) => content.type === "refusal"))) {
-      throw new ProviderError("Design intelligence did not produce a complete accepted response", "invalid_result");
+      throw new ProviderError("Design intelligence did not produce a complete accepted response", "invalid_result", undefined, "INTELLIGENCE_INCOMPLETE");
     }
-    if (typeof response.output_text !== "string") throw new ProviderError("Design intelligence returned no text content", "invalid_result");
+    if (typeof response.output_text !== "string" || !response.output_text.trim()) throw new ProviderError("Design intelligence returned no text content", "invalid_result", undefined, "INTELLIGENCE_NO_TEXT");
     let raw: unknown;
     try { raw = JSON.parse(response.output_text); }
-    catch { throw new ProviderError("Design intelligence returned invalid JSON", "invalid_result"); }
+    catch { throw new ProviderError("Design intelligence returned invalid JSON", "invalid_result", undefined, "INTELLIGENCE_INVALID_JSON"); }
     const parsed = schema.safeParse(raw);
-    if (!parsed.success) throw new ProviderError("Design intelligence output does not match its contract", "invalid_result");
+    if (!parsed.success) throw new ProviderError("Design intelligence output does not match its contract", "invalid_result", undefined, "INTELLIGENCE_SCHEMA_MISMATCH");
     return parsed.data;
   }
   return {
@@ -223,12 +223,12 @@ export function createDesignIntelligence(options: {
       const feedback = Text.parse(input.feedback);
       const messages: IntelligenceMessage[] = [{ role: "user", content: JSON.stringify({ spec, feedback }) }];
       if (input.parentImageUrl) messages.push(...image("Parent revision to preserve except for requested changes", input.parentImageUrl));
-      const plan = await structured(RevisionPlanDraftSchema, "makeready_revision_plan", "revision_plan", "Interpret feedback without requiring a new full prompt. Choose edit_concept for appearance or proportions, scale_geometry only for physical size, regenerate_model for an actual model defect. For scale_geometry set targetHeightMm to the explicitly requested or calculable positive height in millimetres; otherwise set it to null. Preserve unchanged explicit design constraints; feedback may explicitly override an old constraint. Do not claim an image edit is guaranteed in the resulting 3D geometry. Explain the action and expected visible differences.", messages);
+      const plan = await structured(RevisionPlanDraftSchema, "makeready_revision_plan", "revision_plan", "Interpret feedback without requiring a new full prompt. Choose edit_concept for appearance or proportions, scale_geometry only for a measurable change of physical size, regenerate_model for an actual model defect. targetHeightMm is an action parameter, not the preserved size of the design. For edit_concept and regenerate_model, targetHeightMm MUST be null, even when the feedback preserves the original height or the parent spec gives a height. Do not copy spec.targetHeightMm into this field to indicate preservation; put preserved dimensions in preserve instead. Only for scale_geometry, targetHeightMm MUST be the new explicitly requested or directly calculable positive height in millimetres. Preserve unchanged explicit design constraints; feedback may explicitly override an old constraint. Do not claim an image edit is guaranteed in the resulting 3D geometry. Explain the action and expected visible differences.", messages);
+      if (plan.action === "scale_geometry" && plan.targetHeightMm === null || plan.action !== "scale_geometry" && plan.targetHeightMm !== null) {
+        throw new ProviderError("Revision action and target dimensions do not agree", "invalid_result", undefined, "REVISION_ACTION_TARGET_MISMATCH");
+      }
       // Human feedback is immutable evidence, not a model-authored paraphrase.
       plan.requestedChange = feedback;
-      if (plan.action === "scale_geometry" && plan.targetHeightMm === null || plan.action !== "scale_geometry" && plan.targetHeightMm !== null) {
-        throw new ProviderError("Revision action and target dimensions do not agree", "invalid_result");
-      }
       return plan;
     },
     async critiqueVisual(input: { spec: DesignSpecDraft; candidateImageUrl: string; referenceImageUrl?: string; parentImageUrl?: string; requestedChange?: string }): Promise<VisualCritique> {

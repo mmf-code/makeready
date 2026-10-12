@@ -58,6 +58,15 @@ Default waiting is at most 180 job reads separated by five seconds; individual H
 
 The runner's `--help`, typecheck and lint can be verified without a live deployment. A successful local check does not prove provider generation, database configuration or deployment behavior; retain a genuine `result.json` and files from the live run as that evidence.
 
+## Independently verify actual geometry
+
+```sh
+pnpm exec tsx scripts/inspect-live.mts --dir artifacts/live/<run> --height-mm 120
+pnpm exec tsx scripts/inspect-live.mts --dir artifacts/live/<cnc-run> --width-mm 100 --depth-mm 100 --height-mm 12
+```
+
+This performs no network requests or rescaling. It reloads the real GLB and STL using independent matrix/loader code, checks file hashes, grounding, units/axis conversion and requested dimensions, then writes `measurement.json`. Height is required; width/depth are checked only when explicitly supplied. Deviations over 0.1 mm cause exit status 1 and remain failed, even if implemented topology checks passed. No CNC toolpaths or machining verification are inferred.
+
 ## Verified request spending
 
 `run.json` records each observed job's provider request ID and separately labeled `estimatedCostUsd`. After success or a stopped run, the runner makes read-only requests to fal's **billed event feed**, filtered to those exact request IDs. It does not infer spending from the price table, the budget allowance, a reservation, credit balance, or a before/after account balance. The [official billing-events API](https://fal.ai/docs/platform-apis/v1/models/billing-events) defines `cost_total` as USD charged after discounts. Its [current OpenAPI schema](https://api.fal.ai/v1/openapi.json) defines `cost_estimate_nano_usd` as the precision-preserving amount **charged** in nano USD, despite the historical field name.

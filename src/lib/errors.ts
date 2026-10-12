@@ -1,7 +1,7 @@
 import type { ApiError } from "./contracts";
 export class AppError extends Error {
-  constructor(public code: ApiError["code"], message: string, public status = 400, public retryable = false) { super(message); this.name = "AppError"; }
-  toJSON(): ApiError { return { code: this.code, message: this.message, retryable: this.retryable }; }
+  constructor(public code: ApiError["code"], message: string, public status = 400, public retryable = false, public details?: ApiError["details"]) { super(message); this.name = "AppError"; }
+  toJSON(): ApiError { return { code: this.code, message: this.message, retryable: this.retryable, ...(this.details ? { details: this.details } : {}) }; }
 }
 export function databaseError(error: {message:string}): never {
   const text = error.message;

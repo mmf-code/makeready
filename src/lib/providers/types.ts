@@ -31,6 +31,14 @@ export type ProviderResult = {
   thumbnailUrl?: string;
 };
 
+/** Finite, value-free failure evidence safe to expose alongside a durable job receipt. */
+export type ProviderDiagnosticCode =
+  | "INTELLIGENCE_INCOMPLETE"
+  | "INTELLIGENCE_NO_TEXT"
+  | "INTELLIGENCE_INVALID_JSON"
+  | "INTELLIGENCE_SCHEMA_MISMATCH"
+  | "REVISION_ACTION_TARGET_MISMATCH";
+
 export class ProviderError extends Error {
   constructor(
     message: string,
@@ -43,6 +51,7 @@ export class ProviderError extends Error {
       | "unsafe_url"
       | "asset_too_large",
     public readonly httpStatus?: number,
+    public readonly diagnosticCode?: ProviderDiagnosticCode,
   ) {
     super(message);
     this.name = "ProviderError";
