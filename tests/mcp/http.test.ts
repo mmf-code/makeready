@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CallToolResult, ListToolsResult } from "@modelcontextprotocol/server";
 import {
   exampleAudit, exampleDecision, exampleJobs, examplePlan, exampleSession, exampleV1,
@@ -8,9 +8,11 @@ import { handleMakeReadyMcp } from "../../src/lib/mcp/http";
 import type { MakeReadyMcpServices } from "../../src/lib/mcp/server";
 import { AppError } from "../../src/lib/errors";
 import { accelerateMcpJobs } from "../../src/lib/mcp/execution";
+import * as fileTransport from "../../src/lib/mcp/files";
 
 const secret = "x".repeat(48);
 const job = exampleJobs.find((item) => item.status === "queued")!;
+afterEach(() => vi.restoreAllMocks());
 
 function services() {
   return {
@@ -67,6 +69,9 @@ describe("MakeReady Streamable HTTP MCP", () => {
       expect(tool.outputSchema).toBeTruthy();
     }
     expect(list.tools.find((tool) => tool.name === "decide_revision")?.annotations?.idempotentHint).toBe(false);
+    const start = list.tools.find((tool) => tool.name === "start_design")!;
+    expect(start._meta?.["openai/fileParams"]).toEqual(["photo"]);
+    expect(start.inputSchema.properties).toHaveProperty("photo");
   });
 
   it("dispatches typed tools to the shared application service and preserves the saved plan", async () => {
@@ -108,6 +113,37 @@ describe("MakeReady Streamable HTTP MCP", () => {
     const result = await rpc(service, "tools/call", { name: "start_design", arguments: { prompt: "Cat", confirm_cost: true, idempotencyKey: "budget-key-123" } }) as CallToolResult;
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toMatchObject({ error: { code: "BUDGET_EXCEEDED", message: "The project budget is exhausted.", retryable: false } });
+  });
+
+  it("passes a verified photo to the same service and accelerates only its existing durable job", async () => {
+    const verified = { bytes: new Uint8Array([1, 2, 3]), sha256: "a".repeat(64), mimeType: "image/png" as const };
+    const download = vi.spyOn(fileTransport, "downloadMcpPhoto").mockResolvedValue(verified);
+    const service = { ...services(), startPhotoDesign: vi.fn().mockResolvedValue({ sessionId: exampleSession.id, job }) };
+    const kick = vi.fn();
+    const photo = { download_url: "https://files.oaiusercontent.com/image?signature=secret", file_id: "file_reference" };
+    const result = await rpc(accelerateMcpJobs(service, kick), "tools/call", { name: "start_design", arguments: {
+      prompt: "Make this photo into a figurine", photo, confirm_cost: true, idempotencyKey: "photo-original-key",
+    } }) as CallToolResult;
+    expect(result.isError).not.toBe(true);
+    expect(download).toHaveBeenCalledWith(photo);
+    expect(service.startPhotoDesign).toHaveBeenCalledWith({ prompt: "Make this photo into a figurine", heightMm: 120, use: "Paintable tabletop figurine", confirmCost: true, idempotencyKey: "photo-original-key" }, verified);
+    expect(service.startDesign).not.toHaveBeenCalled();
+    expect(kick).toHaveBeenCalledExactlyOnceWith(job.id);
+    expect(JSON.stringify(result)).not.toContain("signature");
+    expect(JSON.stringify(result)).not.toContain("file_reference");
+  });
+
+  it("rejects a broken photo without creating a text job or claiming a completed revision", async () => {
+    const service = { ...services(), startPhotoDesign: vi.fn() };
+    vi.spyOn(fileTransport, "downloadMcpPhoto").mockRejectedValue(new AppError("INVALID_ARTIFACT", "Photo is corrupt.", 422));
+    const result = await rpc(service, "tools/call", { name: "start_design", arguments: {
+      prompt: "Cat", photo: { download_url: "https://files.oaiusercontent.com/image", file_id: "file_reference" },
+      confirm_cost: true, idempotencyKey: "photo-corrupt-key",
+    } }) as CallToolResult;
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ error: { code: "INVALID_ARTIFACT" } });
+    expect(service.startPhotoDesign).not.toHaveBeenCalled();
+    expect(service.startDesign).not.toHaveBeenCalled();
   });
 
   it("accelerates only job-producing tools and keeps get_design read-only", async () => {

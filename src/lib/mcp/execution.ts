@@ -9,6 +9,13 @@ export function accelerateMcpJobs(service: MakeReadyMcpServices, kickJob: (jobId
       kickJob(result.job.id);
       return result;
     },
+    ...(service.startPhotoDesign ? {
+      async startPhotoDesign(input, image) {
+        const result = await service.startPhotoDesign!(input, image);
+        kickJob(result.job.id);
+        return result;
+      },
+    } satisfies Pick<MakeReadyMcpServices, "startPhotoDesign"> : {}),
     async executePlan(input) {
       const result = await service.executePlan(input);
       kickJob(result.id);

@@ -12,7 +12,7 @@ vi.mock("@/lib/providers", async (original) => ({ ...await original<typeof impor
 import { createServices } from "@/lib/services";
 import { AppError, databaseError } from "@/lib/errors";
 import { ProviderError } from "@/lib/providers/types";
-import { storeArtifact } from "@/lib/storage";
+import { hashBytes, readArtifact, storeArtifact } from "@/lib/storage";
 import { evaluateRevision } from "@/lib/harness/evaluate";
 
 type Row = Record<string, unknown>;
@@ -151,6 +151,41 @@ describe("application lifecycle against the actual migration", () => {
     await expect(services.startDesign({ ...input, prompt: "A different fox" })).rejects.toMatchObject({ code: "CONFLICT" });
     vi.stubEnv("FAL_KEY",""); vi.stubEnv("OPENAI_API_KEY","");
     expect(await services.startDesign(input)).toEqual(first);
+  });
+
+  it("deduplicates actual attachment bytes into one stable session/job without LLM access", async () => {
+    const services = createServices(scope), input = initialInput();
+    const attachment = { bytes: image, sha256: hashBytes(image), mimeType: "image/png" as const, fileName: "original.png" };
+    vi.stubEnv("FAL_KEY",""); vi.stubEnv("OPENAI_API_KEY",""); vi.stubEnv("LLM_API_KEY","");
+    const [first,second] = await Promise.all([
+      services.startPhotoDesign(input,attachment),
+      services.startPhotoDesign(input,{ ...attachment, fileName: "same-content-renamed.png" }),
+    ]);
+    expect(first).toEqual(second);
+    expect(first.job).toMatchObject({ sessionId: first.sessionId, operation: "concept", provider: "local", estimatedCostUsd: 0 });
+    expect(await rows("select count(*)::int as count from public.design_sessions")).toEqual([{ count: 1 }]);
+    expect(await rows("select count(*)::int as count from public.generation_jobs")).toEqual([{ count: 1 }]);
+    expect(await rows("select reserved_micros::int as reserved,spent_micros::int as spent from public.make_budgets")).toEqual([{ reserved: 0, spent: 0 }]);
+    const saved = (await rows<{ payload: { sourceImage: ArtifactRef } }>("select payload from public.generation_jobs where id=$1",[first.job.id]))[0].payload.sourceImage;
+    expect(saved).toMatchObject({ sessionId: first.sessionId, kind: "source_image", sha256: attachment.sha256, sizeBytes: image.length, mimeType: "image/png" });
+    expect((await rows<{ data: ArtifactRef; verified: boolean }>("select data,verified from public.make_artifacts where id=$1",[saved.id]))[0]).toEqual({ data: saved, verified: true });
+    expect(await readArtifact(saved)).toEqual(new Uint8Array(image));
+    const storedCount = files.size;
+    expect(await services.startPhotoDesign(input,{ ...attachment, fileName: "third-name.png" })).toEqual(first);
+    expect(files.size).toBe(storedCount);
+    expect(mock.intelligence).not.toHaveBeenCalled(); expect(mock.plan).not.toHaveBeenCalled();
+  });
+
+  it("rejects changed attachment content under the same key and invalid byte receipts", async () => {
+    const services = createServices(scope), input = initialInput();
+    const attachment = { bytes: image, sha256: hashBytes(image), mimeType: "image/png" as const };
+    await services.startPhotoDesign(input,attachment);
+    const changed = await sharp({ create: { width: 12, height: 10, channels: 3, background: "blue" } }).png().toBuffer();
+    await expect(services.startPhotoDesign(input,{ ...attachment, bytes: changed, sha256: hashBytes(changed) })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    await expect(services.startPhotoDesign(input,{ ...attachment, bytes: changed })).rejects.toMatchObject({ code: "INVALID_ARTIFACT", status: 422 });
+    expect(await rows("select count(*)::int as count from public.generation_jobs")).toEqual([{ count: 1 }]);
+    expect(await rows("select count(*)::int as count from public.make_artifacts")).toEqual([{ count: 1 }]);
+    expect(mock.intelligence).not.toHaveBeenCalled();
   });
 
   it("rejects foreign-session IDs and records before creating a new job or decision", async () => {

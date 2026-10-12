@@ -1,0 +1,11 @@
+# Frontend handoff — concrete integration fixes
+
+Backend milestone: `c9e9466`. Claude owns the frontend files below; Codex has not edited them.
+
+1. **Keep the complete paid request identity across retries.** `StartForm` keeps one idempotency key but creates a fresh session/upload for every photo retry. The changed `sessionId`/`imageArtifactId` then correctly causes a backend `CONFLICT`. Preserve the original session, verified upload and submitted payload together with the key. Changed user input needs a new key; ambiguous submissions should recover the existing session/job.
+2. **Use the latest decision on the exact revision.** `buildRunModel().approved()` currently accepts any historical approval. An approval followed by rejection must display as rejected, matching the backend's latest-decision and artifact-hash check.
+3. **Describe checks that actually ran.** Photo initial concepts deliberately use the uploaded image and user-entered specification without LLM billing. Their visual check is `not_checked`; the concept job message must not say an inspector compared it unless the corresponding visual evaluation supports that. Model-preview visual critique also defaults off.
+4. **Label the whole scripted backup.** `/demo` is entirely scripted, including its concept, measurements and procedural cat. Put a visible “Scripted demo — no live generation or measurements” label at the start. Its existing sandbox-maker footer only labels the later physical stages. Real runs end at a Make Package; printing, painting and delivery remain a simulated future flow.
+5. **Render the actual GLB in the MCP View.** The current MCP cards do not load a GLB into a 3D viewer. For the planned in-chat model demonstration, use the manufacturing revision's `model_glb` signed URL with the shared browser viewer. The concept image and the “Open in MakeReady” link remain useful, but do not demonstrate rotating the generated 3D artifact inside ChatGPT.
+
+The MCP widget open link is `${appUrl}/runs/${sessionId}`. Photo file handling is being added on the backend; the descriptor declares `_meta["openai/fileParams"] = ["photo"]`, and the host supplies a `photo` tool argument with `download_url` and `file_id`. This is separate from web's signed-upload API.

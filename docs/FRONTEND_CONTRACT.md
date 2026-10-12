@@ -99,6 +99,29 @@ Additional client errors to surface:
 
 MCP tools use the frozen `@/lib/contracts/mcp` schema. `structuredContent` is `{result, notChecked}`; HTTP is `{data}`. Paid MCP inputs use `confirm_cost: true` and `idempotencyKey`. Planning is also a paid LLM call. Only `get_design` and `get_make_package` are read-only. Every result includes unimplemented checks and regional-measurement limitations. Alternative compatible LLM jobs use nullable provider metadata and retain their actual model/response receipts.
 
+### ChatGPT photo input
+
+`start_design` declares `_meta["openai/fileParams"]: ["photo"]` on its **tool descriptor**. ChatGPT sends the attachment in `arguments.photo`, not in tool-call `_meta`. The optional `photo` field declares `download_url`, `file_id`, `mime_type`, and `file_name`; only the first two are required. Text-only calls remain valid. This format is required by the [official OpenAI file input reference](https://developers.openai.com/plugins/reference#file-apis).
+
+```json
+{
+  "prompt": "Turn this reference into a paintable figurine",
+  "heightMm": 120,
+  "confirm_cost": true,
+  "idempotencyKey": "saved-original-photo-request-key",
+  "photo": {
+    "download_url": "https://files.oaiusercontent.com/temporary-signed-file",
+    "file_id": "file_host_identifier",
+    "mime_type": "image/png",
+    "file_name": "reference.png"
+  }
+}
+```
+
+The server accepts PNG/JPEG/WebP up to 10 MB and 16 megapixels, fully decodes the image, and stores verified original bytes as `source_image` in the same session/artifact store as web uploads. Its job materializes a concept revision only after those actual artifacts exist. Approval and `generate_model` then use the ordinary shared workflow. No concept generation charge or LLM call is required for an uploaded photo.
+
+Download URLs must use HTTPS on an `oaiusercontent.com` subdomain. All DNS answers must be public IPv4; the actual connection is pinned to a checked address. Redirects and unsupported hosts are rejected. The official format does not promise a download hostname, so a different host needs explicit server support. Download failure surfaces `ARTIFACT_UNAVAILABLE`; size/type/decode/host failures surface `INVALID_ARTIFACT`. Ask the user to reattach expired files and preserve the original idempotency key. `file_id`, filenames, and signed URLs are transport details: job identity uses the original request plus verified content hash. A changed file under the same key returns `CONFLICT`. Do not persist or display temporary signed download URLs.
+
 Tool results `_meta["makeready/appUrl"]` provides the configured public web base URL for `app.openLink`; append the shared session ID to the web route agreed with Claude. Never derive the MCP secret URL in the widget. Resource CSP permits configured app/storage origins and Google Fonts hosts. If Claude's entry is missing, tools remain usable with typed/text outputs and advertise no pretend widget.
 
 Run `pnpm build:mcp-view` after changing the widget, imported shared UI, styles, or package lock. The script bundles `src/components/mcp-view/entry.tsx`, compiles Tailwind separately, inlines both into HTML, and writes `src/lib/mcp/view.generated.ts`. The generated HTML contains a `#root` mount point. A test fails if a present entry has no bundle, any recorded source hash changes, or the HTML hash/URI no longer match. Do not import server modules or Next-only modules from the widget.

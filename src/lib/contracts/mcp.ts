@@ -2,7 +2,15 @@ import { z } from "zod";
 import { DecisionInputSchema, DesignSessionSchema, GenerationJobSchema, MakePackageResultSchema, RevisionPlanSchema, StartDesignResultSchema, HumanDecisionSchema } from "./index";
 
 const Paid = { confirm_cost: z.literal(true), idempotencyKey: z.string().min(8).max(200) };
-export const McpStartDesignInputSchema = z.object({ ...Paid, prompt: z.string().min(1).max(6000), heightMm: z.number().positive().max(2000).default(120), use: z.string().default("Paintable tabletop figurine") });
+/** OpenAI requires all four properties, with only download_url/file_id required. */
+export const McpPhotoInputSchema = z.object({
+  download_url: z.string().min(1).max(8192),
+  file_id: z.string().min(1).max(200),
+  mime_type: z.string().max(120).optional(),
+  file_name: z.string().max(180).optional(),
+});
+export type McpPhotoInput = z.infer<typeof McpPhotoInputSchema>;
+export const McpStartDesignInputSchema = z.object({ ...Paid, prompt: z.string().min(1).max(6000), heightMm: z.number().positive().max(2000).default(120), use: z.string().default("Paintable tabletop figurine"), photo: McpPhotoInputSchema.optional() });
 export const McpGetDesignInputSchema = z.object({ sessionId: z.uuid() });
 export const McpPlanRefinementInputSchema = z.object({ ...Paid, sessionId: z.uuid(), revisionId: z.uuid(), feedback: z.string().min(1).max(4000) });
 export const McpApplyRefinementInputSchema = z.object({ ...Paid, planId: z.uuid() });

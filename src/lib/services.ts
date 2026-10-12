@@ -11,7 +11,7 @@ import {
 } from "./contracts";
 import { checked, getDb, rpc } from "./db";
 import { AppError } from "./errors";
-import { assertImage, bucket, hashBytes, readArtifact, signedArtifact } from "./storage";
+import { assertImage, bucket, hashBytes, readArtifact, signedArtifact, storeArtifact } from "./storage";
 import { createDesignIntelligence, isIntelligenceConfigured, ProviderError } from "./providers";
 
 const now = () => new Date().toISOString();
@@ -97,6 +97,22 @@ export function createServices(scopeId="demo") {
     const sourceImage=input.imageArtifactId ? await artifact(input.imageArtifactId,session.id) : undefined;
     if(sourceImage && sourceImage.kind!=="source_image") throw new AppError("INVALID_INPUT","Use a verified source image upload.");
     const job=await enqueue(session.id,input,"concept",sourceImage?0:.50,{input,...(sourceImage?{sourceImage}: {})});
+    return {sessionId:job.sessionId,job};
+  }
+  /** MCP attachments enter the same verified storage and durable job workflow as web uploads. */
+  async function startPhotoDesign(raw:StartDesignInput,image:{bytes:Uint8Array;sha256:string;mimeType:"image/png"|"image/jpeg"|"image/webp";fileName?:string}) {
+    const input=StartDesignInputSchema.parse(raw);
+    if(input.imageArtifactId) throw new AppError("INVALID_INPUT","Supply either an uploaded artifact or an attachment, not both.");
+    if(!image.bytes.byteLength||image.bytes.byteLength>10*1024*1024||hashBytes(image.bytes)!==image.sha256)
+      throw new AppError("INVALID_ARTIFACT","Attachment bytes do not match the image receipt.",422);
+    // Signed URLs and host file IDs are delivery details, not paid request identity.
+    const identity={...input,photo:{sha256:image.sha256,mimeType:image.mimeType}};
+    const previous=await existingJob(input.idempotencyKey,identity);
+    if(previous) return {sessionId:previous.sessionId,job:previous};
+    const session=input.sessionId?(await sessionRow(input.sessionId)).data:await putSession({title:input.prompt.slice(0,80)},sessionIdFor(scopeId,input.idempotencyKey));
+    const ext=image.mimeType==="image/jpeg"?"jpg":image.mimeType==="image/webp"?"webp":"png";
+    const sourceImage=await storeArtifact(session.id,"source_image",image.bytes,image.mimeType,ext);
+    const job=await enqueue(session.id,identity,"concept",0,{input,sourceImage});
     return {sessionId:job.sessionId,job};
   }
   async function getJob(id:string) {
@@ -221,7 +237,7 @@ export function createServices(scopeId="demo") {
     if(!existing.verified) await checked(getDb().from("make_artifacts").update({verified:true}).eq("id",ref.id).eq("verified",false).select("id"));
     return signedArtifact(ref);
   }
-  return {createSession,getSession,startDesign,getJob,planRevision,executePlan,decideRevision,generateModel,getMakePackage,requestUpload,completeUpload};
+  return {createSession,getSession,startDesign,startPhotoDesign,getJob,planRevision,executePlan,decideRevision,generateModel,getMakePackage,requestUpload,completeUpload};
 }
 
 /** Cron recovery for a planning request interrupted outside its paid dispatch window. */

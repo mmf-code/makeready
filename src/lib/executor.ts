@@ -12,7 +12,7 @@ import { GeometryPreparationError, prepareModel, type PreparedModel } from "./ge
 import { evaluateRevision } from "./harness/evaluate";
 import { makePackage } from "./make-package";
 import {
-  assertImageInput, createDesignIntelligence, createFalProvider, isIntelligenceConfigured, ProviderError, VisualCritiqueSchema,
+  assertImageInput, createDesignIntelligence, createFalProvider, isIntelligenceConfigured, MAX_IMAGE_BYTES, ProviderError, VisualCritiqueSchema,
   type IntelligenceResponseMetadata, type ProviderJobRef, type ProviderResult,
 } from "./providers";
 import { readArtifact, signedArtifact, storeArtifact } from "./storage";
@@ -117,6 +117,16 @@ export async function advanceJob(jobId: string): Promise<void> {
     if (!signed.url) throw new AppError("ARTIFACT_UNAVAILABLE", "Image download URL is unavailable.", 503, true);
     return signed.url;
   }
+  async function imageData(ref: ArtifactRef): Promise<string> {
+    if (ref.sessionId !== row.session_id || !["source_image", "concept_image"].includes(ref.kind) ||
+      !["image/png", "image/jpeg", "image/webp"].includes(ref.mimeType) || ref.sizeBytes <= 0 || ref.sizeBytes > MAX_IMAGE_BYTES) {
+      throw new AppError("INVALID_ARTIFACT", "The visual reference is not a supported image within the 20 MB limit.", 422);
+    }
+    // readArtifact verifies the bytes against the immutable artifact's hash and size.
+    const bytes = await readArtifact(ref);
+    if (bytes.byteLength > MAX_IMAGE_BYTES) throw new AppError("INVALID_ARTIFACT", "The visual reference exceeds the 20 MB limit.", 422);
+    return `data:${ref.mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+  }
   async function sourceImage(): Promise<ArtifactRef> {
     const ref = row.payload.sourceImage ?? (row.payload.sourceImageArtifactId ? await artifactById(row.payload.sourceImageArtifactId, row.session_id) : undefined) ??
       row.payload.parent?.artifacts.find((artifact) => artifact.kind === "concept_image" || artifact.kind === "source_image");
@@ -124,12 +134,12 @@ export async function advanceJob(jobId: string): Promise<void> {
     if (ref.sessionId !== row.session_id) throw new AppError("INVALID_ARTIFACT", "Artifact/session mismatch.", 422);
     return ref;
   }
-  async function visual(candidate: ArtifactRef | string, spec: DesignSpec, reference?: ArtifactRef) {
+  async function visual(candidate: ArtifactRef, spec: DesignSpec, reference?: ArtifactRef) {
     if (row.payload.visual) return;
-    const candidateImageUrl = typeof candidate === "string" ? candidate : await imageUrl(candidate);
     const parentImage = row.payload.parent?.artifacts.find((artifact) => artifact.kind === "concept_image" || artifact.kind === "source_image");
-    const parentImageUrl = parentImage ? await imageUrl(parentImage) : undefined;
-    const referenceImageUrl = reference ? await imageUrl(reference) : undefined;
+    const [candidateImageUrl, parentImageUrl, referenceImageUrl] = await Promise.all([
+      imageData(candidate), parentImage ? imageData(parentImage) : undefined, reference ? imageData(reference) : undefined,
+    ]);
     await paid("visual_critique", () => intelligence().critiqueVisual({ spec, candidateImageUrl, referenceImageUrl, parentImageUrl, requestedChange: row.payload.plan?.requestedChange }), (result) => ({ visual: result }));
   }
   async function finish(kind: Revision["kind"], spec: DesignSpec, artifacts: ArtifactRef[]) {
@@ -162,7 +172,7 @@ export async function advanceJob(jobId: string): Promise<void> {
     } else if (row.data.operation === "concept" && !row.payload.specComputed) {
       const input = StartDesignInputSchema.parse(row.payload.input);
       const reference = row.payload.sourceImage;
-      const referenceImageUrl = reference ? await imageUrl(reference) : undefined;
+      const referenceImageUrl = reference ? await imageData(reference) : undefined;
       await checkpoint({ status: "planning", progress: 10 });
       spec = await paid("design_spec", () => intelligence().designSpec({ description: input.prompt, use: input.use, targetHeightMm: input.heightMm, referenceImageUrl }), (result) => ({ spec: result, specComputed: true }));
     }

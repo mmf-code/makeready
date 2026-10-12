@@ -12,10 +12,13 @@ import {
   McpStartDesignInputSchema, McpToolOutputSchemas,
 } from "../contracts/mcp";
 import { getViewToolMetadata, registerViewResource, type ViewResourceOptions } from "./resource";
+import { downloadMcpPhoto, type VerifiedMcpPhoto } from "./files";
+import { AppError } from "../errors";
 
 /** The same application service interface used by REST. No MCP-specific state. */
 export interface MakeReadyMcpServices {
   startDesign(input: StartDesignInput): Promise<StartDesignResult>;
+  startPhotoDesign?(input: StartDesignInput, image: VerifiedMcpPhoto): Promise<StartDesignResult>;
   getSession(sessionId: string): Promise<DesignSession>;
   planRevision(input: PlanRevisionInput): Promise<RevisionPlan>;
   executePlan(input: ExecutePlanInput): Promise<GenerationJob>;
@@ -50,6 +53,7 @@ export function createMakeReadyMcpServer(services: MakeReadyMcpServices, options
       annotations: { idempotentHint: true, ...annotations, destructiveHint: false },
       _meta: {
         ...ui,
+        ...(name === "start_design" ? { "openai/fileParams": ["photo"] } : {}),
         "openai/toolInvocation/invoking": `MakeReady: ${title}`,
         "openai/toolInvocation/invoked": `${title} ready`,
       },
@@ -81,9 +85,14 @@ export function createMakeReadyMcpServer(services: MakeReadyMcpServices, options
   }
 
   register("start_design", "Start design",
-    "Create a session and an asynchronous concept generation job from text. Costs money. Only call with confirm_cost:true after cost approval; use a stable idempotencyKey. Returns a durable job, not an invented completed revision.",
+    "Create a session from a user photo or text. Pass an attached photo in photo; it is downloaded, fully decoded, and persisted as the real source image. Without photo, creates a paid concept generation job from text. Only call with confirm_cost:true after cost approval; reuse the same idempotencyKey when retrying. Returns a durable job, not an invented completed revision.",
     McpStartDesignInputSchema, McpToolOutputSchemas.start_design,
-    ({ confirm_cost, ...input }) => services.startDesign({ ...input, confirmCost: confirm_cost }),
+    async ({ confirm_cost, photo, ...input }) => {
+      const start = { ...input, confirmCost: confirm_cost };
+      if (!photo) return services.startDesign(start);
+      if (!services.startPhotoDesign) throw new AppError("PROVIDER_UNAVAILABLE", "Photo ingestion is not configured. Use the MakeReady web upload or start from text.", 503);
+      return services.startPhotoDesign(start, await downloadMcpPhoto(photo));
+    },
     { readOnlyHint: false, openWorldHint: true });
 
   register("get_design", "Get design",

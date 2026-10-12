@@ -201,14 +201,41 @@ describe("durable executor", () => {
 
   it("stores and hash-binds a provider preview before the visual critic sees it", async () => {
     vi.stubEnv("ENABLE_MODEL_VISUAL_CRITIQUE", "true");
-    manufacturingFixture();
+    const { source, image: reference } = manufacturingFixture();
+    const parentImage = artifact("concept_image");
+    row.payload.parent = { id: randomUUID(), sessionId, kind: "concept", parentRevisionId: null, spec, artifacts: [parentImage], sourceJobId: null, createdAt: timestamp };
+    const candidateBytes = Buffer.alloc(32, 2), parentBytes = Buffer.alloc(32, 3), referenceBytes = Buffer.alloc(32, 1);
+    mock.image.mockResolvedValue({ bytes: candidateBytes, mimeType: "image/png", sha256: "a".repeat(64) });
+    mock.read.mockImplementation(async (ref: ArtifactRef) => ref.id === source.id ? new Uint8Array(32) : ref.id === reference.id ? referenceBytes : ref.id === parentImage.id ? parentBytes : candidateBytes);
     row.payload.providerResult = { job: row.provider_ref, imageUrls: [], glbUrl: "https://v3.fal.media/model.glb", thumbnailUrl: "https://v3.fal.media/preview.png" };
     await advanceJob(jobId);
     const preview = row.payload.previewArtifact as ArtifactRef;
     expect(preview.kind).toBe("concept_image");
     expect(mock.image).toHaveBeenCalledWith(expect.objectContaining({ imageUrls: ["https://v3.fal.media/preview.png"] }));
-    expect(mock.critique).toHaveBeenCalledWith(expect.objectContaining({ candidateImageUrl: `https://storage.example.com/${preview.id}.png` }));
+    expect(mock.critique).toHaveBeenCalledWith(expect.objectContaining({
+      candidateImageUrl: `data:image/png;base64,${candidateBytes.toString("base64")}`,
+      parentImageUrl: `data:image/png;base64,${parentBytes.toString("base64")}`,
+      referenceImageUrl: `data:image/png;base64,${referenceBytes.toString("base64")}`,
+    }));
+    expect(mock.read).toHaveBeenCalledWith(preview);
+    expect(mock.signed).not.toHaveBeenCalled();
     expect(record?.artifacts.at(-1)).toEqual(preview);
+  });
+
+  it("keeps signed HTTPS image references for fal model generation", async () => {
+    const source = artifact("concept_image");
+    row.data.operation = "model"; row.payload = { input: {}, spec, sourceImage: source };
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("queued");
+    expect(mock.submitModel).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: `https://storage.example.com/${source.id}.png` }));
+    expect(mock.critique).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized visual image before reading or making a paid LLM call", async () => {
+    row.payload = { input: {}, spec, specComputed: true, sourceImageArtifact: { ...artifact("concept_image"), sizeBytes: 20 * 1024 * 1024 + 1 } };
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("failed");
+    expect(mock.read).not.toHaveBeenCalled(); expect(mock.critique).not.toHaveBeenCalled();
   });
 
   it("finishes real 3D preparation without an LLM even when the provider supplies a preview", async () => {

@@ -46,7 +46,7 @@ async function main() {
     console.info("configuration: BOOTSTRAP_VALIDATED preview (database and generation remain unavailable until full setup)");
     if (!apply) { console.info("mode: CHECK_ONLY (no external writes)"); return; }
     await configureProject(link.projectId, link.orgId);
-    await syncEnvironment("preview", values);
+    await syncEnvironment(link.projectId, link.orgId, "preview", values);
     console.info("bootstrap: COMPLETE (deploy new source separately; no database writes)");
     return;
   }
@@ -101,7 +101,7 @@ async function main() {
       MAKE_BUDGET_USD: String(budget),
       APP_URL: urls.get(target)!,
     }, llmValues);
-    await syncEnvironment(target, values);
+    await syncEnvironment(link.projectId, link.orgId, target, values);
   }
   console.info("configuration: COMPLETE (deploy new source separately; existing deployments retain their environment)");
 }
@@ -142,11 +142,25 @@ function languageEnvironment(required: boolean): Record<string, string> {
   return values;
 }
 
-async function syncEnvironment(target: string, values: Record<string, string>) {
+async function syncEnvironment(projectId: string, orgId: string, target: string, values: Record<string, string>) {
+  const endpoint = `/v10/projects/${encodeURIComponent(projectId)}/env`;
+  const team = `teamId=${encodeURIComponent(orgId)}`;
   for (const [name, value] of Object.entries(values)) {
-    // Values travel only through stdin; no --value/--token flags or raw subprocess output.
-    await cli(["env", "add", name, target, "--force", "--yes", "--non-interactive"], value);
+    // Omit gitBranch explicitly: preview values apply to all Preview branches.
+    // Values travel only in the JSON body over stdin, never arguments or logs.
+    const response = JSON.parse(await cli([
+      "api", `${endpoint}?upsert=true&${team}`, "--method", "POST", "--input", "-", "--raw", "--non-interactive",
+    ], JSON.stringify({ key: name, value, type: "sensitive", target: [target] }))) as { failed?: unknown[]; error?: unknown };
+    if (response.error || (response.failed?.length ?? 0) > 0) fail(`Vercel environment sync failed for ${name}; response body suppressed.`);
     console.info(`environment: SYNCED ${target} ${name}`);
+  }
+  const response = JSON.parse(await cli(["api", `${endpoint}?decrypt=false&${team}`, "--raw", "--non-interactive"])) as {
+    envs?: { key?: string; type?: string; target?: string[]; gitBranch?: string | null }[];
+  };
+  for (const name of Object.keys(values)) {
+    const matches = response.envs?.filter((entry) => entry.key === name && !entry.gitBranch && entry.target?.includes(target)) ?? [];
+    if (matches.length !== 1 || matches[0].type !== "sensitive" || matches[0].target?.length !== 1) fail(`Vercel environment metadata verification failed for ${name}; response body suppressed.`);
+    console.info(`environment: VERIFIED ${target} ${name} all_branches sensitive`);
   }
 }
 
