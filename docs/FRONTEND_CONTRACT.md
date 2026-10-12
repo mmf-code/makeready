@@ -58,4 +58,47 @@ GLB preserves textures/materials and uses meters/Y-up. STL is geometry only in m
 
 Claude owns `src/components/mcp-view/entry.tsx`, its stylesheet, `App` bridge and presentation. No Next-only imports in shared UI. Register ontoolresult before connecting; consume structuredContent and call tools via app.callServerTool. Do not fetch relative `/api` URLs from the ChatGPT sandbox. Codex bundles entry + Tailwind CSS, generates the hashed HTML resource, and owns CSP. Never put the MCP secret in UI/source/results. Web and MCP share the same session IDs/store.
 
-The React-free typed client and concrete examples will be added without changing these contracts.
+## Typed client usage
+
+Import named functions from `@/lib/client`, or call `createClient({baseUrl, fetch, cache, onCacheError})` for an explicit transport. Functions return the unwrapped typed `data`; they validate inputs and responses with Zod. API calls use the web gate cookie. None submit automatically on error.
+
+```ts
+import { getSession, planRevision, executePlan, pollJob } from "@/lib/client";
+
+const session = await getSession(sessionId);
+const plan = await planRevision({
+  sessionId, revisionId, feedback: "Kulakları küçült, yüzü koru",
+  confirmCost: true, idempotencyKey: savedPlanningKey,
+});
+// Render this exact plan and collect the user's confirmation before executing.
+const job = await executePlan({
+  planId: plan.id, confirmCost: true, idempotencyKey: savedExecutionKey,
+});
+await pollJob(job.id, { signal, onUpdate: updateTimeline });
+const refreshed = await getSession(session.id);
+```
+
+`pollJob` reads an existing job until `completed`, `failed`, or `submission_unknown`. It returns the terminal job so the UI can display its status/error. Aborting only stops polling; server execution continues. Up to three consecutive retryable read errors use bounded backoff; mutations are never automatically retried.
+
+`createSession`, `startDesign`, `getSession`, `planRevision`, `executePlan`, `decideRevision`, `generateModel`, `getMakePackage`, `getJob`, `getStatus`, `requestUpload`, `completeUpload`, and `unlock` each map to the route above.
+
+`uploadSourceImage(sessionId, file, {fileName, signal, onProgress})` hashes original bytes, requests a signed upload, uploads directly with no application credentials sent to storage, and completes server verification. Progress events mark stages; fetch does not pretend to measure uploaded byte percentages. This pipeline only uploads source images: all geometry preparation runs on the server.
+
+`getArtifactBlob(artifact, {signal})` verifies size/hash and optionally caches the Blob. `getSession` always reads the server, then caches metadata. `getCachedSession` is an explicit offline read returning `{value, cachedAt}`; visibly label cached data and never treat it as current job state. Cache failures do not prevent online session loading. `clearCache()` clears local data.
+
+Additional client errors to surface:
+
+- `TRANSPORT_AMBIGUOUS`: a paid request's acknowledgement was lost or unreadable. Preserve its idempotency key and reconcile; do not create a new submission.
+- `POLLING_INTERRUPTED`: waiting stopped; the server job continues.
+- `NETWORK_ERROR`, `POLLING_FAILED`, `CONTRACT_MISMATCH`: show connection/contract failure, not provider failure or success.
+- `UPLOAD_INTERRUPTED`: call `completeUpload` with `error.details.artifactId/sessionId` before requesting another upload.
+- `HASH_UNAVAILABLE`: use HTTPS or localhost so Web Crypto can verify artifacts.
+- `CACHE_UNAVAILABLE`, `CACHE_ERROR`: optional local cache issue; online flow remains available.
+
+## MCP transport and widget bundle
+
+MCP tools use the frozen `@/lib/contracts/mcp` schema. `structuredContent` is `{result, notChecked}`; HTTP is `{data}`. Paid MCP inputs use `confirm_cost: true` and `idempotencyKey`. Planning is also a paid OpenAI call. Only `get_design` and `get_make_package` are read-only. Every result includes unimplemented checks and regional-measurement limitations.
+
+Tool results `_meta["makeready/appUrl"]` provides the configured public web base URL for `app.openLink`; append the shared session ID to the web route agreed with Claude. Never derive the MCP secret URL in the widget. Resource CSP permits configured app/storage origins and Google Fonts hosts. If Claude's entry is missing, tools remain usable with typed/text outputs and advertise no pretend widget.
+
+Run `pnpm build:mcp-view` after changing the widget, imported shared UI, styles, or package lock. The script bundles `src/components/mcp-view/entry.tsx`, compiles Tailwind separately, inlines both into HTML, and writes `src/lib/mcp/view.generated.ts`. The generated HTML contains a `#root` mount point. A test fails if a present entry has no bundle, any recorded source hash changes, or the HTML hash/URI no longer match. Do not import server modules or Next-only modules from the widget.
