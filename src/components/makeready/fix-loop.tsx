@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { AcceptanceResult, DesignSession, RevisionPlan } from "@/lib/contracts";
 import { Hat, type HatKind } from "./brand";
-import { ACTION_WORDS, isActive, jobProof, STATUS_WORDS, type RunModel } from "./run-model";
+import { ACTION_WORDS, isActive, jobProof, sentence, STATUS_WORDS, type RunModel } from "./run-model";
 
 type Verdict = "fixed" | "off" | "working" | "waiting" | "failed";
 const VERDICT: Record<Verdict, { word: string; tone: string }> = {
@@ -82,7 +82,7 @@ export function FixLoop({ session, model }: { session: DesignSession; model: Run
             <div className="grid gap-2 md:grid-cols-4">
               <Step n="1" title="Caught" hat={l.caughtBy.hat} who={l.caughtBy.who}>{l.caughtBy.what}</Step>
               <Step n="2" title="Planned" hat="foreman" who="Foreman" proof={l.planProof}>
-                {l.plan.interpretedIntent}.{l.plan.preserve.length ? ` Keep ${l.plan.preserve.join(", ")}.` : ""}
+                {sentence(l.plan.interpretedIntent)}{l.plan.preserve.length ? ` Keep ${l.plan.preserve.join(", ")}.` : ""}
                 {l.plan.checks?.length ? ` ${l.plan.checks.length} measurable check${l.plan.checks.length > 1 ? "s" : ""}.` : ""}
               </Step>
               <Step n="3" title="Fixed" hat={l.fixWho === "Concept agent" ? "design" : "tech"} who={l.fixWho} proof={l.fixProof}>{l.fixWhat}</Step>

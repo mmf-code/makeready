@@ -57,9 +57,13 @@ export const took = (job: GenerationJob) => {
 };
 const llmWord = (requestId: string | null) => (requestId?.startsWith("msg_") ? "Claude" : requestId?.startsWith("resp_") || requestId?.startsWith("chatcmpl") ? "OpenAI" : "LLM");
 export const jobProof = (job: GenerationJob) => {
-  const who = job.provider === "openai" ? llmWord(job.providerRequestId) : job.provider ? PROVIDER_WORDS[job.provider] : "";
+  // LLM jobs record the response id but not always the provider, so the id's prefix names it.
+  const who = job.provider && job.provider !== "openai" ? PROVIDER_WORDS[job.provider] : job.providerRequestId ? llmWord(job.providerRequestId) : "";
   return [who, job.providerRequestId && `req ${shortId(job.providerRequestId)}`, took(job) && `took ${took(job)}`].filter(Boolean).join(" · ");
 };
+
+/** Model-written text sometimes ends with its own period. */
+export const sentence = (text: string) => `${text.replace(/[.\s]+$/, "")}.`;
 
 export const ACTION_WORDS: Record<RevisionPlan["action"], string> = {
   edit_concept: "Edit the concept image", scale_geometry: "Rescale the model", regenerate_model: "Make a new 3D model",
@@ -158,7 +162,7 @@ export function buildRunModel(session: DesignSession): RunModel {
     entries.push({
       id: plan.id, at: plan.createdAt, from: "foreman", to: "foreman", kind: "change", cost: plan.estimatedCostUsd,
       tool: "plan_refinement", args: `{ revision: "${versionOf(plan.parentRevisionId)}",\n  feedback: ${JSON.stringify(plan.requestedChange)} }`,
-      result: `${coIndex.get(plan.id)}: ${plan.interpretedIntent}.${keep} ${ACTION_WORDS[plan.action]}.${executedPlanIds.has(plan.id) ? "" : " Not run yet."}`,
+      result: `${coIndex.get(plan.id)}: ${sentence(plan.interpretedIntent)}${keep} ${ACTION_WORDS[plan.action]}.${executedPlanIds.has(plan.id) ? "" : " Not run yet."}`,
       proof: planner ? jobProof(planner) : undefined,
     });
   }
@@ -170,7 +174,7 @@ export function buildRunModel(session: DesignSession): RunModel {
   for (const e of evaluations) {
     if (e.kind === "visual" && e.engine === "not_checked") {
       entries.push({ id: e.id, at: doneAt(e.revisionId, e.createdAt), from: "foreman", to: "you", kind: "human", tool: "look.skipped", args: `{ revision: "${versionOf(e.revisionId)}" }`, result: "The look inspector did not compare this 3D model with the concept. Turn it around in the viewer and judge it yourself." });
-    } else if (e.kind === "visual") {
+    } else if (e.kind === "visual" && !session.comparisons.some((c) => c.visualEvaluationIds.includes(e.id))) {
       entries.push({ id: e.id, at: doneAt(e.revisionId, e.createdAt), from: "foreman", to: "look", kind: "call", tool: "look.compare", args: `{ revision: "${versionOf(e.revisionId)}" }`, result: e.summary, proof: `${e.engine} · vision` });
     } else if (e.kind === "physical") {
       const checks = e.audit.checks;
@@ -187,7 +191,8 @@ export function buildRunModel(session: DesignSession): RunModel {
   for (const c of session.comparisons) {
     const args = `{ parent: "${versionOf(c.parentRevisionId)}", child: "${versionOf(c.childRevisionId)}" }`;
     const at = doneAt(c.childRevisionId, c.createdAt);
-    if (c.visualEvaluationIds.some((id) => lookedAt.has(id))) entries.push({ id: c.id, at, from: "foreman", to: "look", kind: "call", tool: "look.compare", args, result: c.summary });
+    const look = evaluations.find((e) => c.visualEvaluationIds.includes(e.id) && lookedAt.has(e.id));
+    if (look) entries.push({ id: c.id, at, from: "foreman", to: "look", kind: "call", tool: "look.compare", args, result: c.summary, proof: `${look.engine} · vision` });
     if (c.acceptance?.length) {
       const missed = c.acceptance.filter((a) => a.status === "not_met").length;
       entries.push({ id: `${c.id}:accept`, at, from: "foreman", to: "shape", kind: missed ? "problem" : "call", tool: "shape.accept", args, result: c.acceptance.map(acceptanceLine).join(" ") });
