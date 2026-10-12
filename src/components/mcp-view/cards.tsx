@@ -1,17 +1,19 @@
 import { useState, type ReactNode } from "react";
-import { Check, Download, ExternalLink, ImageOff, Lock, RefreshCw, TriangleAlert, CircleAlert, FileBox, Info } from "lucide-react";
+import {
+  Check, CircleAlert, CircleCheck, CircleDashed, CircleX, Download, ExternalLink, FileBox, HardHat, ImageOff, Lock,
+  RefreshCw, TriangleAlert, UserRound,
+} from "lucide-react";
 import type {
-  ApiError, DesignSession, GenerationJob, HumanDecision, MakePackageResult, RevisionPlan, StartDesignResult,
+  ApiError, DesignSession, GenerationJob, HumanDecision, MakePackageResult, PhysicalAudit, RevisionPlan, StartDesignResult,
 } from "@/lib/contracts";
 import {
-  JOB_STEPS, actionWords, activeJobOf, checkWords, countChecks, errorHint, expiryTime, jobStepIndex, mm,
-  notCheckedSentence, orderedRevisions, physicalAuditFor, runUrl, statusWords, usd, visualSummaryFor,
-  type ActionHandler, type ViewAction, type ViewModel,
+  JOB_STEPS, STATIONS, actionWords, activeJobOf, countChecks, deltaMm, errorHint, expiryTime, failedCheckWords, isApproved,
+  jobStepIndex, mm, notCheckedList, orderedRevisions, physicalAuditFor, runUrl, stationOfJob, toneOfJob, usd,
+  visualSummaryFor, type ActionHandler, type StationTone, type ViewAction, type ViewModel,
 } from "./format";
 import "./mcp-view.css";
 
 export type ViewTheme = "light" | "dark";
-type Tone = "foreman" | "tech" | "inspect" | "problem" | "attention";
 
 export interface CardProps<T> {
   result: T;
@@ -77,10 +79,31 @@ function modelKey(model: ViewModel | null): string {
 
 /* ---------- Shared pieces ---------- */
 
-function Header({ tone, children }: { tone: Tone; children: ReactNode }) {
+/** The production line. Stations before this card are passed; the card's own station is marked. */
+function Line({ at, tone }: { at: number; tone?: StationTone }) {
   return (
-    <p className="mrv-head">
-      <span className="mrv-dot" data-tone={tone} aria-hidden="true" />
+    <ol className="mrv-line" aria-label="Production line">
+      {STATIONS.map((station, index) => {
+        const state = index < at ? "done" : index === at ? "current" : "next";
+        return (
+          <li key={station} data-state={state} data-tone={index === at ? tone : undefined} aria-current={index === at ? "step" : undefined}>
+            <span className="mrv-line-bar" aria-hidden="true" />
+            <span className="mrv-line-label">{station}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Who acted, in the line's own words: a role badge, then what the role did. */
+function Byline({ role, person, children }: { role: string; person?: boolean; children: ReactNode }) {
+  return (
+    <p className="mrv-by">
+      <span className="mrv-role">
+        {person ? <UserRound size={14} aria-hidden="true" /> : <HardHat size={14} aria-hidden="true" />}
+        {role}
+      </span>
       <span>{children}</span>
     </p>
   );
@@ -96,8 +119,13 @@ function TitleRow({ title, meta }: { title: ReactNode; meta?: ReactNode }) {
 }
 
 function NotCheckedFoot({ items }: { items: string[] }) {
-  const sentence = notCheckedSentence(items);
-  return sentence ? <p className="mrv-foot">{sentence}</p> : null;
+  const list = notCheckedList(items);
+  if (!list) return null;
+  return (
+    <p className="mrv-foot">
+      <span className="mrv-strong">Not checked:</span> {list}
+    </p>
+  );
 }
 
 function ActionButton({ spec, onAction }: { spec: ButtonSpec; onAction: ActionHandler }) {
@@ -168,17 +196,12 @@ const ACTORS: Record<GenerationJob["operation"], { actor: string; doing: string;
   import: { actor: "Technician", doing: "is importing the file", done: "imported the file" },
 };
 
-function jobHeader(job: GenerationJob): { tone: Tone; text: string } {
-  const { actor, doing, done } = ACTORS[job.operation];
-  if (job.status === "completed") return { tone: "inspect", text: `${actor} ${done}` };
-  if (job.status === "failed") return { tone: "problem", text: `${actor} could not finish` };
-  if (job.status === "submission_unknown") return { tone: "attention", text: `${actor} can't confirm the request was sent` };
-  return { tone: "tech", text: `${actor} ${doing}` };
-}
-
-function jobTitle(job: GenerationJob): string {
-  if (job.status === "submission_unknown") return "Can't confirm it was sent";
-  return statusWords(job.status);
+function jobVerb(job: GenerationJob): string {
+  const { doing, done } = ACTORS[job.operation];
+  if (job.status === "completed") return done;
+  if (job.status === "failed") return "could not finish";
+  if (job.status === "submission_unknown") return "can't confirm the request was sent";
+  return doing;
 }
 
 function JobSteps({ job }: { job: GenerationJob }) {
@@ -201,31 +224,77 @@ function JobSteps({ job }: { job: GenerationJob }) {
   );
 }
 
+function Note({ tone, title, children }: { tone: StationTone; title: ReactNode; children: ReactNode }) {
+  return (
+    <div className="mrv-note" data-tone={tone}>
+      {tone === "problem" ? <CircleAlert size={16} aria-hidden="true" /> : <TriangleAlert size={16} aria-hidden="true" />}
+      <div className="mrv-note-body">
+        <p className="mrv-strong">{title}</p>
+        <p className="mrv-muted">{children}</p>
+      </div>
+    </div>
+  );
+}
+
 /** Honest explanations for failed and unconfirmed jobs. */
 function JobProblem({ job }: { job: GenerationJob }) {
   if (job.status === "submission_unknown") {
     return (
-      <div className="mrv-note" data-tone="attention">
-        <TriangleAlert size={16} aria-hidden="true" />
-        <div className="mrv-note-body">
-          <p className="mrv-strong">Not resent automatically</p>
-          <p className="mrv-muted">MakeReady lost the confirmation from the generator. Sending again could charge twice, so it waits. Check progress before asking for a new run.</p>
-        </div>
-      </div>
+      <Note tone="attention" title="Not resent automatically">
+        MakeReady lost the confirmation from the generator. Sending again could charge twice, so it waits. Check progress before asking for a new run.
+      </Note>
     );
   }
   if (job.status === "failed") {
     return (
-      <div className="mrv-note" data-tone="problem">
-        <CircleAlert size={16} aria-hidden="true" />
-        <div className="mrv-note-body">
-          <p className="mrv-strong">{job.error?.message ?? "The job failed."}</p>
-          <p className="mrv-muted">{job.error ? errorHint(job.error.code) : "The previous version is kept."} Nothing was resubmitted.</p>
-        </div>
-      </div>
+      <Note tone="problem" title={job.error?.message ?? "The job failed."}>
+        {job.error ? errorHint(job.error.code) : "The previous version is kept."} Nothing was resubmitted.
+      </Note>
     );
   }
   return null;
+}
+
+/** Height on a dimension line, then the target and the footprint. Server-measured numbers only. */
+function Measure({ audit, label = "Height, measured" }: { audit: PhysicalAudit; label?: string }) {
+  const bounds = audit.measuredBoundsMm;
+  return (
+    <div className="mrv-measure">
+      <span className="mrv-dim" aria-hidden="true" />
+      <div className="mrv-measure-text">
+        <span className="mrv-small mrv-muted">{label}</span>
+        <span className="mrv-big">{mm(bounds.height)}</span>
+        <span className="mrv-small mrv-muted">Target {audit.targetHeightMm} mm, off by {deltaMm(bounds.height, audit.targetHeightMm)}</span>
+        <span className="mrv-small mrv-muted">Footprint {bounds.width.toFixed(1)} × {bounds.depth.toFixed(1)} mm</span>
+      </div>
+    </div>
+  );
+}
+
+function sentenceCase(text: string): string {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
+/** Passed, failed and not checked, with the failed checks spelled out. Not checked counts the footer's list too. */
+function Checks({ audit, notChecked }: { audit: PhysicalAudit; notChecked: string[] }) {
+  const counts = countChecks(audit, notChecked);
+  const failed = audit.checks.filter((check) => check.status === "fail");
+  return (
+    <div className="mrv-checks">
+      <ul className="mrv-tally" aria-label="Measured checks">
+        <li data-state="pass"><span className="mrv-tally-num"><CircleCheck size={16} aria-hidden="true" />{counts.pass}</span><span className="mrv-tally-label">passed</span></li>
+        <li data-state="fail"><span className="mrv-tally-num"><CircleX size={16} aria-hidden="true" />{counts.fail}</span><span className="mrv-tally-label">failed</span></li>
+        <li data-state="none"><span className="mrv-tally-num"><CircleDashed size={16} aria-hidden="true" />{counts.notChecked}</span><span className="mrv-tally-label">not checked</span></li>
+      </ul>
+      {failed.length ? (
+        <ul className="mrv-facts">
+          {failed.map((check) => (
+            <li key={check.id}><CircleX size={14} aria-hidden="true" data-tone="problem" /><span>{sentenceCase(failedCheckWords(check))}</span></li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 /* ---------- Cards ---------- */
@@ -233,8 +302,13 @@ function JobProblem({ job }: { job: GenerationJob }) {
 export function WaitingCard() {
   return (
     <div className="mrv-card" aria-busy="true">
-      <p className="mrv-muted">Waiting for MakeReady</p>
-      <div className="mrv-skeleton" aria-hidden="true" />
+      <div className="mrv-line mrv-skel-line" aria-hidden="true">
+        {STATIONS.map((station) => <span key={station} className="mrv-skeleton" />)}
+      </div>
+      <p className="mrv-muted mrv-small">Waiting for MakeReady</p>
+      <div className="mrv-skeleton mrv-skel-title" aria-hidden="true" />
+      <div className="mrv-skeleton mrv-skel-block" aria-hidden="true" />
+      <div className="mrv-skeleton mrv-skel-button" aria-hidden="true" />
     </div>
   );
 }
@@ -242,8 +316,8 @@ export function WaitingCard() {
 function UnknownCard({ notChecked }: { notChecked: string[] }) {
   return (
     <div className="mrv-card">
-      <Header tone="attention">MakeReady sent a result this view can&apos;t show</Header>
-      <p className="mrv-muted">The full result is in the chat.</p>
+      <TitleRow title="This result has no card" />
+      <p className="mrv-muted">MakeReady sent a result this view can&apos;t show. The full result is in the chat.</p>
       <NotCheckedFoot items={notChecked} />
     </div>
   );
@@ -251,17 +325,16 @@ function UnknownCard({ notChecked }: { notChecked: string[] }) {
 
 export function StartDesignCard({ result, notChecked, appUrl, onAction }: CardProps<StartDesignResult>) {
   const { job, sessionId } = result;
-  const problem = job.status === "failed" ? "problem" : job.status === "submission_unknown" ? "attention" : null;
+  const done = job.status === "completed";
   return (
     <div className="mrv-card">
-      <Header tone={problem ?? "foreman"}>Foreman started the design</Header>
-      <TitleRow title="Design started" meta={`Est. ${usd(job.estimatedCostUsd)}`} />
-      <p className="mrv-status">
-        <span className="mrv-dot" data-tone={problem ?? (job.status === "completed" ? "inspect" : "tech")} aria-hidden="true" />
-        <span>{statusWords(job.status)}</span>
-      </p>
+      <Line at={0} tone={toneOfJob(job)} />
+      <Byline role="Foreman">{done ? "started the design" : "started the design and handed it to the concept artist"}</Byline>
+      <TitleRow title="Concept v1" meta={`Est. ${usd(job.estimatedCostUsd)}`} />
+      <JobSteps job={job} />
       <JobProblem job={job} />
-      <Actions onAction={onAction} buttons={[progressButton(sessionId), openButton(appUrl, sessionId)]} />
+      {done ? <p className="mrv-muted">Concept v1 is drawn. Check progress to see it.</p> : null}
+      <Actions onAction={onAction} buttons={[progressButton(sessionId, done ? "Show concept" : "Check progress"), openButton(appUrl, sessionId)]} />
       <NotCheckedFoot items={notChecked} />
     </div>
   );
@@ -274,14 +347,20 @@ export function DesignCard({ result: session, notChecked, appUrl, onAction }: Ca
   const activeJob = activeJobOf(session);
   const audit = latest?.kind === "manufacturing" ? physicalAuditFor(session, latest.id) : undefined;
   const visual = latest ? visualSummaryFor(session, latest.id) : undefined;
+  const approved = latest ? isApproved(session, latest) : false;
   const concept = latest?.kind === "concept"
     ? latest.artifacts.find((artifact) => artifact.kind === "concept_image") ?? latest.artifacts.find((artifact) => artifact.kind === "source_image")
     : undefined;
 
-  let header: { tone: Tone; text: string };
-  if (!latest) header = { tone: "foreman", text: "Foreman is setting up the design" };
-  else if (latest.kind === "manufacturing") header = audit ? { tone: "inspect", text: `Shape inspector measured v${version}` } : { tone: "tech", text: `Geometry agent built v${version}` };
-  else header = visual ? { tone: "inspect", text: `Visual inspector reviewed v${version}` } : { tone: "tech", text: `Concept artist drew v${version}` };
+  const at = activeJob ? stationOfJob(activeJob) : !latest ? 0 : latest.kind === "manufacturing" ? 3 : 2;
+
+  let byline: { role: string; person?: boolean; text: string };
+  if (activeJob) byline = { role: ACTORS[activeJob.operation].actor, text: jobVerb(activeJob) };
+  else if (!latest) byline = { role: "Foreman", text: "is setting up the design" };
+  else if (latest.kind === "manufacturing") byline = audit ? { role: "Shape inspector", text: `measured v${version}` } : { role: "Geometry agent", text: `built v${version}` };
+  else if (approved) byline = { role: "Reviewer", person: true, text: `approved v${version}` };
+  else if (visual) byline = { role: "Visual inspector", text: `looked at v${version}` };
+  else byline = { role: "Concept artist", text: `drew v${version}` };
 
   let context: ButtonSpec | null = null;
   if (activeJob) context = progressButton(session.id);
@@ -291,51 +370,59 @@ export function DesignCard({ result: session, notChecked, appUrl, onAction }: Ca
       action: { type: "call", name: "get_make_package", arguments: { revisionId: latest.id } },
       icon: <FileBox size={16} aria-hidden="true" />,
     };
+  } else if (latest?.kind === "concept" && !approved) {
+    // The person's own tap is the approval. It covers these exact files only.
+    context = {
+      label: `Approve v${version}`, primary: true,
+      action: { type: "call", name: "decide_revision", arguments: { revisionId: latest.id, decision: "approve" } },
+      icon: <Check size={16} aria-hidden="true" />,
+    };
   }
 
-  const counts = audit ? countChecks(audit) : null;
-  const stage = latest?.kind === "concept" ? (
-    <div className="mrv-stage">
-      {concept?.url ? (
-        <img src={concept.url} alt={`Concept image, v${version}: ${latest.spec.description}`} />
-      ) : (
-        <div className="mrv-stage-empty">
-          <ImageOff size={22} aria-hidden="true" />
-          <span>Image link not included in this result</span>
-        </div>
-      )}
-    </div>
-  ) : audit ? (
-    <div className="mrv-measure">
-      <span className="mrv-big">{mm(audit.measuredBoundsMm.height)}</span>
-      <span className="mrv-muted mrv-small">Measured height, target {audit.targetHeightMm} mm</span>
-    </div>
-  ) : null;
+  let body: ReactNode = null;
+  if (latest?.kind === "concept") {
+    body = (
+      <div className="mrv-split">
+        <figure className="mrv-stage">
+          {concept?.url ? (
+            // eslint-disable-next-line @next/next/no-img-element -- The widget runs in the host iframe, outside Next.js.
+            <img src={concept.url} alt={`Concept image, v${version}: ${latest.spec.description}`} />
+          ) : (
+            <div className="mrv-stage-empty">
+              <ImageOff size={22} aria-hidden="true" />
+              <span>Image link not included in this result</span>
+            </div>
+          )}
+          <figcaption className="mrv-tag">v{version}</figcaption>
+        </figure>
+        <ul className="mrv-facts">
+          {visual ? <li><HardHat size={14} aria-hidden="true" /><span>Visual inspector: {visual}</span></li> : null}
+          <li><CircleDashed size={14} aria-hidden="true" /><span>Concept only. It has no real size until the 3D model is measured.</span></li>
+          {approved
+            ? <li><Check size={14} aria-hidden="true" /><span>Approved for these files. A new version needs its own approval.</span></li>
+            : <li><UserRound size={14} aria-hidden="true" /><span>Waiting for your call: approve it, or ask for a change.</span></li>}
+        </ul>
+      </div>
+    );
+  } else if (audit) {
+    body = (
+      <div className="mrv-split">
+        <Measure audit={audit} />
+        <Checks audit={audit} notChecked={notChecked} />
+      </div>
+    );
+  } else if (latest) {
+    body = <p className="mrv-muted">The 3D model is saved. No measurement is saved yet.</p>;
+  }
 
   return (
     <div className="mrv-card">
-      <Header tone={header.tone}>{header.text}</Header>
-      <TitleRow title={session.title || session.spec.description} meta={latest ? `v${version} of ${version}` : "No versions yet"} />
-      <div className={stage ? "mrv-split" : undefined}>
-        {stage}
-        <ul className="mrv-facts">
-          {counts ? (
-            <li><Check size={14} aria-hidden="true" /><span>{counts.pass} passed, {counts.fail} failed, {counts.notChecked} not checked</span></li>
-          ) : null}
-          {counts && counts.failed.length ? (
-            <li><CircleAlert size={14} aria-hidden="true" /><span>Failed: {counts.failed.map(checkWords).join(", ")}</span></li>
-          ) : null}
-          {visual ? (
-            <li><Info size={14} aria-hidden="true" /><span>Visual inspector: {visual}</span></li>
-          ) : null}
-          {activeJob ? (
-            <li><RefreshCw size={14} aria-hidden="true" /><span>{ACTORS[activeJob.operation].actor}: {statusWords(activeJob.status)}</span></li>
-          ) : null}
-          {latest && !counts && !visual && !activeJob ? (
-            <li><Info size={14} aria-hidden="true" /><span>{latest.kind === "concept" ? "Concept only. No 3D model yet." : "No measurement saved yet."}</span></li>
-          ) : null}
-        </ul>
-      </div>
+      <Line at={at} tone={activeJob ? toneOfJob(activeJob) : undefined} />
+      <Byline role={byline.role} person={byline.person}>{byline.text}</Byline>
+      <TitleRow title={session.title || session.spec.description} meta={latest ? `v${version}` : "No versions yet"} />
+      {body}
+      {activeJob ? <JobSteps job={activeJob} /> : null}
+      {activeJob ? <JobProblem job={activeJob} /> : null}
       <Actions onAction={onAction} buttons={[context, openButton(appUrl, session.id)]} />
       <NotCheckedFoot items={notChecked} />
     </div>
@@ -346,28 +433,27 @@ export function ChangeOrderCard({ result: plan, notChecked, appUrl, onAction }: 
   const change = plan.requestedChange || plan.interpretedIntent;
   return (
     <div className="mrv-card">
-      <Header tone="foreman">Foreman planned a change</Header>
-      <TitleRow title="Change order" meta={usd(plan.estimatedCostUsd)} />
-      <dl className="mrv-rows">
-        <div className="mrv-row">
-          <dt>Change</dt>
-          <dd>
-            <p className="mrv-strong">{change}</p>
-            {plan.interpretedIntent && plan.interpretedIntent !== change ? <p className="mrv-muted mrv-small">{plan.interpretedIntent}</p> : null}
-          </dd>
-        </div>
+      <Line at={1} />
+      <Byline role="Foreman">wrote a change order</Byline>
+      <TitleRow title="Change order" />
+      <div className="mrv-order">
+        <section className="mrv-order-part">
+          <h3 className="mrv-label">Changes</h3>
+          <p className="mrv-change"><mark>{change}</mark></p>
+          {plan.interpretedIntent && plan.interpretedIntent !== change ? <p className="mrv-muted mrv-small">Read as: {plan.interpretedIntent}</p> : null}
+        </section>
         {plan.preserve.length ? (
-          <div className="mrv-row">
-            <dt>Keep</dt>
-            <dd>
-              <ul className="mrv-chips">
-                {plan.preserve.map((item) => (
-                  <li key={item} className="mrv-chip"><Lock size={12} aria-hidden="true" />{item}</li>
-                ))}
-              </ul>
-            </dd>
-          </div>
+          <section className="mrv-order-part">
+            <h3 className="mrv-label">Stays the same</h3>
+            <ul className="mrv-chips">
+              {plan.preserve.map((item) => (
+                <li key={item} className="mrv-chip"><Lock size={12} aria-hidden="true" />{item}</li>
+              ))}
+            </ul>
+          </section>
         ) : null}
+      </div>
+      <dl className="mrv-rows">
         <div className="mrv-row">
           <dt>How</dt>
           <dd>{actionWords(plan.action)}</dd>
@@ -376,10 +462,16 @@ export function ChangeOrderCard({ result: plan, notChecked, appUrl, onAction }: 
           <dt>Why</dt>
           <dd className="mrv-muted">{plan.reason}</dd>
         </div>
+        {plan.expectedDifferences.length ? (
+          <div className="mrv-row">
+            <dt>Expect</dt>
+            <dd className="mrv-muted">{plan.expectedDifferences.join(". ")}</dd>
+          </div>
+        ) : null}
       </dl>
       <p className="mrv-status">
         <span className="mrv-dot" data-tone="attention" aria-hidden="true" />
-        <span>Saved, not run yet</span>
+        <span>Saved, not run yet. Applying costs about {usd(plan.estimatedCostUsd)}.</span>
       </p>
       <Actions
         onAction={onAction}
@@ -399,16 +491,20 @@ export function ChangeOrderCard({ result: plan, notChecked, appUrl, onAction }: 
 }
 
 export function JobCard({ result: job, tool, notChecked, appUrl, onAction }: CardProps<GenerationJob> & { tool: "apply_refinement" | "generate_model" }) {
-  const header = jobHeader(job);
   const done = job.status === "completed";
-  const kind = tool === "generate_model" ? "3D model" : "Change order";
+  const model = tool === "generate_model";
   return (
     <div className="mrv-card">
-      <Header tone={header.tone}>{header.text}</Header>
-      <TitleRow title={jobTitle(job)} meta={`${kind}, est. ${usd(job.estimatedCostUsd)}`} />
+      <Line at={model ? 3 : 1} tone={toneOfJob(job)} />
+      <Byline role={ACTORS[job.operation].actor}>{jobVerb(job)}</Byline>
+      <TitleRow title={model ? "3D model" : "Change order"} meta={`Est. ${usd(job.estimatedCostUsd)}`} />
       <JobSteps job={job} />
       <JobProblem job={job} />
-      {done ? <p className="mrv-muted">Finished. Check progress to see the new version and its checks.</p> : null}
+      {done ? (
+        <p className="mrv-muted">
+          {model ? "Built, scaled and measured. Check progress to see the numbers." : "Applied. Check progress to see the new version."}
+        </p>
+      ) : null}
       <Actions
         onAction={onAction}
         buttons={[progressButton(job.sessionId, done ? "Show result" : "Check progress"), openButton(appUrl, job.sessionId)]}
@@ -422,15 +518,14 @@ export function DecisionCard({ result: decision, notChecked, appUrl, onAction }:
   const approved = decision.decision === "approve";
   return (
     <div className="mrv-card">
-      <Header tone={approved ? "inspect" : "problem"}>
-        {approved ? "Human reviewer approved the revision" : "Human reviewer did not approve the revision"}
-      </Header>
-      <TitleRow title={approved ? "Approved" : "Not approved"} />
-      {decision.note ? <p>&ldquo;{decision.note}&rdquo;</p> : null}
-      <p className="mrv-muted mrv-small">
+      <Line at={2} tone={approved ? undefined : "attention"} />
+      <Byline role="Reviewer" person>{approved ? "approved this version" : "sent this version back"}</Byline>
+      <TitleRow title={approved ? "Approved" : "Sent back"} />
+      {decision.note ? <blockquote className="mrv-quote">{decision.note}</blockquote> : null}
+      <p className="mrv-muted">
         {approved
-          ? "Applies to this exact revision only. A later version needs its own approval."
-          : "The revision is kept unchanged. The agent can plan another change."}
+          ? "The approval covers these exact files. A later version needs its own approval."
+          : "The version is kept as it is. The agent can write another change order."}
       </p>
       <Actions onAction={onAction} buttons={[openButton(appUrl, decision.sessionId)]} />
       <NotCheckedFoot items={notChecked} />
@@ -439,25 +534,21 @@ export function DecisionCard({ result: decision, notChecked, appUrl, onAction }:
 }
 
 export function PackageCard({ result: pack, notChecked, appUrl, onAction }: CardProps<MakePackageResult>) {
-  const counts = countChecks(pack.audit);
   const expires = expiryTime(pack.expiresAt);
   return (
     <div className="mrv-card">
-      <Header tone="inspect">Shape inspector measured the package</Header>
+      <Line at={4} />
+      <Byline role="Foreman">packed the files for a maker</Byline>
       <TitleRow title="Make package" meta={expires ? `Link expires ${expires}` : undefined} />
       <div className="mrv-split">
-        <div className="mrv-measure">
-          <span className="mrv-big">{mm(pack.audit.measuredBoundsMm.height)}</span>
-          <span className="mrv-muted mrv-small">Measured height, target {pack.audit.targetHeightMm} mm</span>
+        <Measure audit={pack.audit} />
+        <div className="mrv-checks">
+          <Checks audit={pack.audit} notChecked={[...notChecked, ...pack.notChecked]} />
+          <ul className="mrv-facts">
+            <li><FileBox size={14} aria-hidden="true" /><span>GLB in meters, STL in millimeters</span></li>
+            <li><CircleDashed size={14} aria-hidden="true" /><span>Preparation only. No maker has accepted an order.</span></li>
+          </ul>
         </div>
-        <ul className="mrv-facts">
-          <li><Check size={14} aria-hidden="true" /><span>{counts.pass} {counts.pass === 1 ? "check" : "checks"} passed{counts.fail ? `, ${counts.fail} failed` : ""}</span></li>
-          {counts.failed.length ? (
-            <li><CircleAlert size={14} aria-hidden="true" /><span>Failed: {counts.failed.map(checkWords).join(", ")}</span></li>
-          ) : null}
-          <li><FileBox size={14} aria-hidden="true" /><span>GLB in meters, STL in millimeters</span></li>
-          <li><Info size={14} aria-hidden="true" /><span>Preparation only. No maker has accepted an order.</span></li>
-        </ul>
       </div>
       <Actions
         onAction={onAction}
@@ -474,17 +565,9 @@ export function PackageCard({ result: pack, notChecked, appUrl, onAction }: Card
 export function ErrorCard({ result: error, notChecked }: Pick<CardProps<ApiError>, "result" | "notChecked">) {
   return (
     <div className="mrv-card">
-      <Header tone="problem">MakeReady stopped</Header>
-      <TitleRow title="Couldn't finish this step" />
-      <div className="mrv-note" data-tone="problem">
-        <CircleAlert size={16} aria-hidden="true" />
-        <div className="mrv-note-body">
-          <p className="mrv-strong">{error.message}</p>
-          <p className="mrv-muted">{errorHint(error.code)}</p>
-        </div>
-      </div>
+      <TitleRow title="MakeReady stopped this step" />
+      <Note tone="problem" title={error.message}>{errorHint(error.code)}</Note>
       <NotCheckedFoot items={notChecked} />
     </div>
   );
 }
-

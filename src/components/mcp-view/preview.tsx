@@ -29,6 +29,18 @@ const conceptSession: DesignSession = {
   ...exampleSession,
   jobs: [jobWith("running", { progress: 40 })],
 };
+const settledJobs = exampleSession.jobs.filter((job) => job.status === "completed");
+const conceptWaiting: DesignSession = { ...exampleSession, jobs: settledJobs, decisions: [] };
+const conceptApproved: DesignSession = { ...exampleSession, jobs: settledJobs };
+/** The fixture plan with English copy, as the planner writes it. */
+const plan = {
+  ...examplePlan,
+  requestedChange: "Make the ears smaller, keep the face",
+  interpretedIntent: "Smaller ears, everything else as it is",
+  preserve: ["Face", "Scarf", "Colors", "Pose"],
+  reason: "Ear size is a look change, so editing the concept image is cheaper than a new 3D model.",
+  expectedDifferences: ["Shorter ears", "Same face and scarf"],
+};
 const makePackage: MakePackageResult = {
   revisionId: exampleV2.id,
   audit: exampleAudit,
@@ -41,9 +53,11 @@ const makePackage: MakePackageResult = {
 const cases: { label: string; model: ViewModel | null; appUrl?: string | null }[] = [
   { label: "Empty state", model: null },
   { label: "start_design", model: { kind: "start_design", result: { sessionId: exampleSession.id, job: jobWith("queued", { operation: "concept" }) } } },
-  { label: "get_design, concept", model: { kind: "get_design", result: conceptSession } },
+  { label: "get_design, concept, job running", model: { kind: "get_design", result: conceptSession } },
+  { label: "get_design, concept, waiting for the person", model: { kind: "get_design", result: conceptWaiting } },
+  { label: "get_design, concept, approved", model: { kind: "get_design", result: conceptApproved } },
   { label: "get_design, manufacturing", model: { kind: "get_design", result: manufacturingSession } },
-  { label: "plan_refinement", model: { kind: "plan_refinement", result: examplePlan } },
+  { label: "plan_refinement", model: { kind: "plan_refinement", result: plan } },
   { label: "apply_refinement, running", model: { kind: "job", tool: "apply_refinement", result: jobWith("running", { progress: 40 }) } },
   { label: "generate_model, checking", model: { kind: "job", tool: "generate_model", result: jobWith("verifying", { operation: "model" }) } },
   { label: "generate_model, submission unknown", model: { kind: "job", tool: "generate_model", result: jobWith("submission_unknown", { operation: "model" }) } },

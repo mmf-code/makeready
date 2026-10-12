@@ -174,21 +174,23 @@ export function checkWords(id: string): string {
   return CHECK_WORDS[id] ?? id.replaceAll("_", " ");
 }
 
-export function notCheckedSentence(items: string[]): string | null {
+/** "wall thickness, supports, ..." with duplicates removed, or null when the list is empty. */
+export function notCheckedList(items: string[]): string | null {
   const words = [...new Set(items.map(checkWords))];
-  return words.length ? `Not checked: ${words.join(", ")}` : null;
+  return words.length ? words.join(", ") : null;
 }
 
 export interface CheckCounts { pass: number; fail: number; notChecked: number; failed: string[] }
 
-export function countChecks(audit: PhysicalAudit): CheckCounts {
-  const notCheckedIds = new Set(audit.notChecked);
+/** `alsoNotChecked` adds the result-level list, so the count matches the "Not checked" footer. */
+export function countChecks(audit: PhysicalAudit, alsoNotChecked: string[] = []): CheckCounts {
+  const notCheckedIds = new Set([...audit.notChecked, ...alsoNotChecked].map(checkWords));
   let pass = 0;
   const failed: string[] = [];
   for (const check of audit.checks) {
     if (check.status === "pass") pass += 1;
     else if (check.status === "fail") failed.push(check.id);
-    else notCheckedIds.add(check.id);
+    else notCheckedIds.add(checkWords(check.id));
   }
   return { pass, fail: failed.length, notChecked: notCheckedIds.size, failed };
 }
@@ -258,4 +260,48 @@ export function errorHint(code: ApiError["code"]): string {
     case "STORAGE_FAILED": return "A file is missing or could not be used. Nothing was marked as done.";
     case "INTERNAL_ERROR": return "Check the existing job before repeating paid work.";
   }
+}
+
+/** The five stations of the line. Every card marks the one it reports on. */
+export const STATIONS = ["Concept", "Change", "Approval", "3D model", "Package"] as const;
+export type StationTone = "problem" | "attention";
+
+export function stationOfJob(job: GenerationJob): number {
+  switch (job.operation) {
+    case "concept": return 0;
+    case "planning":
+    case "refinement": return 1;
+    case "model":
+    case "scale":
+    case "import": return 3;
+  }
+}
+
+export function toneOfJob(job: GenerationJob): StationTone | undefined {
+  if (job.status === "failed") return "problem";
+  if (job.status === "submission_unknown") return "attention";
+  return undefined;
+}
+
+/** Same rule as the web run: only the latest decision counts, and only for the files it was made on. */
+export function isApproved(session: DesignSession, revision: Revision): boolean {
+  const last = latestOf(session.decisions.filter((decision) => decision.revisionId === revision.id));
+  if (!last || last.decision !== "approve") return false;
+  const hashes = new Set(revision.artifacts.map((artifact) => artifact.sha256));
+  return last.artifactHashes.length === 0 || last.artifactHashes.every((hash) => hashes.has(hash));
+}
+
+/** "+0.4 mm", "-1.2 mm", "0.0 mm". */
+export function deltaMm(measured: number, target: number): string {
+  const delta = Math.round((measured - target) * 10) / 10;
+  return delta === 0 ? "0.0 mm" : `${delta > 0 ? "+" : ""}${delta.toFixed(1)} mm`;
+}
+
+/** "open edges: 3 found, limit 0" when the audit gives numbers; the plain name otherwise. */
+export function failedCheckWords(check: PhysicalAudit["checks"][number]): string {
+  const name = checkWords(check.id);
+  if (typeof check.actual === "number" && typeof check.threshold === "number") {
+    return `${name}: ${check.actual} found, limit ${check.threshold}`;
+  }
+  return name;
 }
