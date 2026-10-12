@@ -25,6 +25,7 @@ describe("actual PostgreSQL migration and RPC invariants (isolated PGlite)", () 
     // Supabase-only infrastructure is represented by its roles and bucket table.
     await db.exec("create role anon; create role authenticated; create role service_role bypassrls; create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint);");
     await db.exec(await readFile(new URL("../../supabase/migrations/202610120001_makeready.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../../supabase/migrations/202610120002_comparison_ancestry.sql", import.meta.url), "utf8"));
   }, 30_000);
   beforeEach(async () => {
     await db.exec("truncate public.generation_job_events,public.design_records,public.make_artifacts,public.generation_jobs,public.make_budgets,public.design_sessions restart identity cascade;");
@@ -73,6 +74,24 @@ describe("actual PostgreSQL migration and RPC invariants (isolated PGlite)", () 
   }
   async function insertRecord(kind: string, data: Row & { id: string; sessionId: string }, sourceJobId: string | null = null) {
     await db.query("insert into public.design_records(id,session_id,kind,data,source_job_id) values($1,$2,$3,$4,$5)", [data.id, data.sessionId, kind, data, sourceJobId]);
+  }
+  async function descendant(parentRevisionId: string | null, kind: Revision["kind"], sessionId = session) {
+    const source = await create(job({ sessionId, operation: kind === "manufacturing" ? "model" : "refinement", parentRevisionId }), randomUUID(), 0);
+    const lease = (await claim(source.id))!;
+    const refs = kind === "manufacturing"
+      ? await Promise.all([artifact("source_glb", sessionId), artifact("model_glb", sessionId), artifact("model_stl", sessionId), artifact("audit", sessionId)])
+      : [await artifact("concept_image", sessionId)];
+    const result = revision(source, refs, { kind });
+    await finish(source, lease.fence, result);
+    return result;
+  }
+  function comparison(parent: Revision, child: Revision, overrides: Row = {}) {
+    return { id: randomUUID(), sessionId: session, parentRevisionId: parent.id, childRevisionId: child.id, planId: null, visualEvaluationIds: [], physicalEvaluationIds: [], ...overrides };
+  }
+  async function savedPlan(parent: Revision) {
+    const plan = { id: randomUUID(), sessionId: parent.sessionId, parentRevisionId: parent.id, maxAttempts: 2 };
+    await insertRecord("plan", plan);
+    return plan;
   }
 
   it("applies the complete migration and grants only the server role access", async () => {
@@ -233,5 +252,66 @@ describe("actual PostgreSQL migration and RPC invariants (isolated PGlite)", () 
     await expect(insertRecord("comparison", { ...comparison, childRevisionId: parent.id })).rejects.toThrow("LINEAGE_MISMATCH");
     await expect(insertRecord("comparison", { ...comparison, visualEvaluationIds: [], physicalEvaluationIds: [evaluation.id] })).rejects.toThrow("EVALUATION_NOT_FOUND");
     await insertRecord("comparison", comparison);
+  });
+
+  it("accepts old manufacturing -> revised concept -> new manufacturing without changing direct lineage", async () => {
+    const parent = await descendant(null, "manufacturing");
+    const conceptChild = await descendant(parent.id, "concept");
+    const child = await descendant(conceptChild.id, "manufacturing");
+    const physical = { id: randomUUID(), sessionId: session, revisionId: child.id, artifactHashes: child.artifacts.map(a => a.sha256), kind: "physical" };
+    await insertRecord("evaluation", physical);
+    const plan = await savedPlan(conceptChild);
+    await insertRecord("comparison", comparison(conceptChild, child, { planId: plan.id }));
+    await insertRecord("comparison", comparison(parent, child, { planId: plan.id, physicalEvaluationIds: [physical.id] }));
+    expect(await scalar<number>("select count(*)::int as result from public.design_records where kind='comparison'")).toBe(2);
+    expect(await scalar<string>("select data->>'parentRevisionId' as result from public.design_records where id=$1", [child.id])).toBe(conceptChild.id);
+    expect(await scalar<boolean>("select has_function_privilege('anon','public.mr_validate_record()','EXECUTE') as result")).toBe(false);
+  });
+
+  it("rejects unrelated/foreign ancestry and permits indirect comparisons only between manufacturing revisions", async () => {
+    const parent = await descendant(null, "manufacturing"), unrelated = await descendant(null, "manufacturing");
+    const middle = await descendant(parent.id, "concept"), child = await descendant(middle.id, "manufacturing");
+    const foreign = await descendant(null, "manufacturing", otherSession);
+    await expect(insertRecord("comparison", comparison(unrelated, child))).rejects.toThrow("LINEAGE_MISMATCH");
+    await expect(insertRecord("comparison", comparison(foreign, child))).rejects.toThrow("PARENT_NOT_FOUND");
+    await expect(insertRecord("comparison", comparison(parent, foreign))).rejects.toThrow("LINEAGE_MISMATCH");
+    const rootConcept = await concept(), nextConcept = await descendant(rootConcept.id, "concept"), farConcept = await descendant(nextConcept.id, "concept");
+    await expect(insertRecord("comparison", comparison(rootConcept, farConcept))).rejects.toThrow("LINEAGE_MISMATCH");
+    await expect(insertRecord("comparison", comparison(parent, await descendant(middle.id, "concept")))).rejects.toThrow("LINEAGE_MISMATCH");
+    const unrelatedPlan = await savedPlan(unrelated), foreignPlan = await savedPlan(foreign);
+    await expect(insertRecord("comparison", comparison(parent, child, { planId: unrelatedPlan.id }))).rejects.toThrow("PLAN_NOT_FOUND");
+    await expect(insertRecord("comparison", comparison(parent, child, { planId: foreignPlan.id }))).rejects.toThrow("PLAN_NOT_FOUND");
+    const oldPlan = await savedPlan(parent);
+    await expect(insertRecord("comparison", comparison(middle, child, { planId: oldPlan.id }))).rejects.toThrow("PLAN_NOT_FOUND");
+    await insertRecord("comparison", comparison(parent, child, { planId: oldPlan.id }));
+  });
+
+  it("rejects corrupt cyclic or cross-session intermediate chains within the bounded walk", async () => {
+    const parent = await descendant(null, "manufacturing"), middle = await descendant(parent.id, "concept"), child = await descendant(middle.id, "manufacturing");
+    // Existing append-only guards prevent corrupt chains in normal operation.
+    // Disable only the immutable-update trigger to construct hostile fixtures.
+    await db.exec("alter table public.design_records disable trigger immutable_design_records");
+    try {
+      await db.query("update public.design_records set data=jsonb_set(data,'{parentRevisionId}',$2) where id=$1", [middle.id, JSON.stringify(child.id)]);
+    } finally { await db.exec("alter table public.design_records enable trigger immutable_design_records"); }
+    await expect(insertRecord("comparison", comparison(parent, child))).rejects.toThrow("LINEAGE_MISMATCH");
+    const foreign = await descendant(null, "concept", otherSession);
+    await db.exec("alter table public.design_records disable trigger immutable_design_records");
+    try {
+      await db.query("update public.design_records set data=jsonb_set(data,'{parentRevisionId}',$2) where id=$1", [middle.id, JSON.stringify(foreign.id)]);
+    } finally { await db.exec("alter table public.design_records enable trigger immutable_design_records"); }
+    await expect(insertRecord("comparison", comparison(parent, child))).rejects.toThrow("LINEAGE_MISMATCH");
+  });
+
+  it("accepts 30 ancestor links and rejects a 31-link comparison", async () => {
+    const parent = await descendant(null, "manufacturing");
+    let cursor = parent;
+    for (let index = 0; index < 29; index++) cursor = await descendant(cursor.id, "concept");
+    const within = await descendant(cursor.id, "manufacturing");
+    await insertRecord("comparison", comparison(parent, within));
+    const beyond = await descendant(within.id, "manufacturing");
+    await expect(insertRecord("comparison", comparison(parent, beyond))).rejects.toThrow("LINEAGE_MISMATCH");
+    // Direct manufacturing comparisons remain valid at any overall history depth.
+    await insertRecord("comparison", comparison(within, beyond));
   });
 });
