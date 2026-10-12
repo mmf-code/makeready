@@ -1,6 +1,6 @@
 # MakeReady — gerçek üretim kanıtı
 
-12 Ekim 2026, İstanbul. Faturalama kaydı yenileme: 13:26; kalıcı LLM kayıtlarını okuma: 13:27. CNC çalışması, yüklenen logo ve logo revizyonu gerçek sağlayıcı çıktısından GLB, STL ve üretim paketi üretti. Aşağıdaki dosyalar yerel `artifacts/live/` klasöründedir ve Git'e dahil edilmez.
+12 Ekim 2026, İstanbul. Fal faturalama kaydı yenileme: 13:26; kalıcı LLM kayıtlarını okuma: 13:27; Meshy ölçüm ve kredi doğrulaması: 13:40. CNC çalışması, yüklenen logo, logo revizyonu ve ayrı Meshy denemesi gerçek sağlayıcı çıktısından GLB, STL ve üretim paketi üretti. Aşağıdaki dosyalar yerel `artifacts/live/` klasöründedir ve Git'e dahil edilmez.
 
 ## Bağımsız ölçüm
 
@@ -11,6 +11,7 @@
 | CNC adayı | 100 × 100 × 12 | 116,716280 × 116,714347 × 12 | **Başarısız:** genişlik ve derinlik hedefi aşılmış; yükseklik doğru. |
 | Yüklenen logo | Yalnızca 120 mm yükseklik | 177,717380 × 1,896771 × 120 | **Geçti:** istenen yükseklik doğru. Genişlik/derinlik hedefi verilmedi. |
 | Revize logo | 25 mm derinlik, 120 mm yükseklik | 177,467747 × 69,627250 × 120 | **Başarısız:** derinlik hedefi +44,627250 mm aşılmış; yükseklik doğru. |
+| Yüklenen logo / Meshy 7.1 | Yalnızca 120 mm yükseklik | 174,088551 × 12,855648 × 120 | **Ölçü geçti; fiziksel denetim başarısız.** Genişlik/derinlik hedefi verilmedi. |
 
 CNC adayında genişlik +16,716280 mm, derinlik +16,714347 mm sapıyor. Bu çıktı 100 × 100 mm ölçü şartını karşılamıyor. Logo derinliği yaklaşık **1,897 mm**; duvar kalınlığı, malzeme dayanımı ve üretim uygunluğu ayrıca doğrulanmalı.
 
@@ -20,6 +21,18 @@ Uygulanan fiziksel denetimler her iki dosyada 10 geçti / 0 başarısız göster
 
 - CNC: [ölçüm](../artifacts/live/cnc-20261012-1255/measurement.json), [denetim](../artifacts/live/cnc-20261012-1255/audit.json), [STL](../artifacts/live/cnc-20261012-1255/model.stl), [üretim paketi](../artifacts/live/cnc-20261012-1255/make-package.zip).
 - Logo: [ölçüm](../artifacts/live/logo-20261012-1256/measurement.json), [denetim](../artifacts/live/logo-20261012-1256/audit.json), [STL](../artifacts/live/logo-20261012-1256/model.stl), [üretim paketi](../artifacts/live/logo-20261012-1256/make-package.zip).
+
+### Meshy 7.1 — ayrı ve gerçek üretim
+
+Aynı yüklenen logo konsepti için kullanıcı tarafından istenen ikinci sağlayıcı denendi. Model sabit `meshy-7.1`; otomatik fallback veya yeniden ücretli gönderim yapılmadı. İş `bb37b535-2b9d-4b5d-826e-eb8e3ed8a1ca`, sağlayıcı task ID `01a12faf-51ff-701d-9f01-fbcffff10585`, tamamlanmış revision `0dd6dc25-5900-4cda-9e65-871c6e61fd80`.
+
+Gerçek dosya **82.211 üçgen** içeriyor. Bağımsız yükseklik, dosya hash'i, zemin ve GLB/STL koordinat kontrolleri geçti; en büyük köşe farkı **0,000003815 mm**. Fiziksel denetim **7 geçti / 3 başarısız**: 10 açık sınır kenarı, 5 manifold olmayan kenar ve 10 manifold olmayan vertex. Okunabilir kusurlu model ayrı revision olarak saklandı; rapor başarısız bulguları koruyor. Üretim durumu `preparation_only`.
+
+Sağlayıcının task okuma yanıtı **30 kredi** tüketildiğini bildiriyor. Bunun USD karşılığı doğrulanmadı; kredi sayısı dolar olarak gösterilmiyor.
+
+- [Bağımsız ölçüm](../artifacts/live/logo-meshy-20261012-1335/measurement.json), [fiziksel denetim](../artifacts/live/logo-meshy-20261012-1335/audit.json), [sağlayıcı kredi kaydı](../artifacts/live/logo-meshy-20261012-1335/billing.json).
+- [Textured GLB](../artifacts/live/logo-meshy-20261012-1335/normalized.glb), [STL](../artifacts/live/logo-meshy-20261012-1335/model.stl), [üretim paketi](../artifacts/live/logo-meshy-20261012-1335/make-package.zip).
+- [Canlı logo oturumu](https://makeready-preview-mmf-code.vercel.app/runs/d4feaec1-6e9b-4e7a-9665-46d40f2c3df6) aynı konseptten gelen Fal ve Meshy sürümlerini içeriyor.
 
 ### Gerçek revizyon zinciri
 

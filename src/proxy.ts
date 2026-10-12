@@ -18,7 +18,7 @@ export async function proxy(request: NextRequest) {
 }
 
 function publicPath(path: string): boolean {
-  if (path === "/access" || path === "/api/access") return true;
+  if (path === "/access" || path === "/api/access" || path === "/agents" || path === "/llms.txt") return true;
   if (path.startsWith("/_next/") || path === "/favicon.ico" || path === "/robots.txt" || path === "/sitemap.xml") return true;
   // These endpoints perform their own secret/signature validation.
   if (path.startsWith("/api/mcp/") || path === "/api/webhooks/fal" || path === "/api/internal/reconcile") return true;

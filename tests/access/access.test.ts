@@ -109,10 +109,10 @@ describe("Next.js access proxy", () => {
   it("permits valid sessions and only the explicitly independent auth routes", async () => {
     const authorized = await proxy(new NextRequest("https://app.example.test/api/sessions", { headers: { cookie: `${ACCESS_COOKIE}=${createAccessToken()}` } }));
     expect(authorized.headers.get("x-middleware-next")).toBe("1");
-    for (const path of ["/access", "/api/access", "/api/mcp/unguessable", "/api/webhooks/fal", "/api/internal/reconcile", "/globe.svg"]) {
+    for (const path of ["/access", "/api/access", "/agents", "/llms.txt", "/api/mcp/unguessable", "/api/webhooks/fal", "/api/internal/reconcile", "/globe.svg"]) {
       expect((await proxy(new NextRequest(`https://app.example.test${path}`))).headers.get("x-middleware-next")).toBe("1");
     }
-    for (const path of ["/api/sessions/report.svg", "/api/webhooks/fal/other", "/private.svg"]) {
+    for (const path of ["/agents/private", "/llms.txt/private", "/api/sessions/report.svg", "/api/webhooks/fal/other", "/private.svg"]) {
       expect((await proxy(new NextRequest(`https://app.example.test${path}`))).headers.get("x-middleware-next")).toBeNull();
     }
   });
