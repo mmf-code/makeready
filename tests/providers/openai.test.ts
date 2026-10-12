@@ -149,6 +149,19 @@ describe("bounded design intelligence", () => {
     expect(createResponse.mock.calls[0][0].input[0].content).toContain("Human approval remains separate");
   });
 
+  it("labels actual GLB views and their limitations, fixes the output language and preserves discrepancies", async () => {
+    const createResponse = vi.fn().mockResolvedValue(response({ summary: "Blue scarf differs", alignment: "aligned", observations: [{ criterion: "scarf", finding: "Different shape", status: "not_met" }], preserveObserved: [], suggestedChanges: ["Compare the scarf"], limitations: ["No dimensions inferred"] }));
+    const result = await createDesignIntelligence({ createResponse }).critiqueVisual({ spec, candidateImageUrl: "data:image/png;base64,AQID", referenceImageUrl: "data:image/png;base64,BAUG", candidateKind: "model_views", renderLimitations: ["No PBR reflections"] });
+    expect(result.alignment).toBe("partially_aligned");
+    expect(result.observations[0].status).toBe("not_met");
+    const sent = JSON.stringify(createResponse.mock.calls[0][0].input);
+    expect(sent).toContain("actual stored 3D GLB");
+    expect(sent).toContain("front, side, three-quarter");
+    expect(sent).toContain("No PBR reflections");
+    expect(sent).toContain("Write all free-text fields in English");
+    expect(createResponse).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the default OpenAI Responses transport and disables SDK retries", async () => {
     vi.stubEnv("OPENAI_API_KEY", "mock-openai-key");
     sdk.responses.mockResolvedValue(response(spec));

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CONTRACT_VERSION = "1.3.0" as const;
+export const CONTRACT_VERSION = "1.4.0" as const;
 const Id = z.uuid();
 const Timestamp = z.iso.datetime();
 const Hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -100,8 +100,16 @@ export const PhysicalAuditSchema = z.object({
 });
 export type PhysicalAudit = z.infer<typeof PhysicalAuditSchema>;
 const EvaluationBase = { id: Id, sessionId: Id, revisionId: Id, artifactHashes: z.array(Hash), engine: z.string(), method: z.string(), limitations: z.array(z.string()), createdAt: Timestamp };
+export const ModelVisualEvidenceSchema = z.object({
+  renderer: z.string().min(1), modelSha256: Hash, referenceSha256: Hash,
+  renderImage: ArtifactRefSchema, manifest: ArtifactRefSchema,
+});
+export type ModelVisualEvidence = z.infer<typeof ModelVisualEvidenceSchema>;
 export const EvaluationSchema = z.discriminatedUnion("kind", [
-  z.object({ ...EvaluationBase, kind: z.literal("visual"), summary: z.string(), changesObserved: z.array(z.string()), preservationFindings: z.array(z.string()), uncertainties: z.array(z.string()) }),
+  z.object({ ...EvaluationBase, kind: z.literal("visual"), summary: z.string(), changesObserved: z.array(z.string()), preservationFindings: z.array(z.string()), uncertainties: z.array(z.string()),
+    alignment: z.enum(["aligned", "partially_aligned", "misaligned", "uncertain"]).optional(),
+    suggestedChanges: z.array(z.string()).optional(), evidence: ModelVisualEvidenceSchema.optional(),
+  }),
   z.object({ ...EvaluationBase, kind: z.literal("physical"), audit: PhysicalAuditSchema }),
   z.object({ ...EvaluationBase, kind: z.literal("human"), decision: z.enum(["approve", "reject"]), note: z.string().nullable() }),
 ]);

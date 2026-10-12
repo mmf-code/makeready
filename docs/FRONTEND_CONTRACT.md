@@ -52,6 +52,16 @@ Since v1.3.0 a plan can carry `checks`: measurable size requirements (`height_mm
 
 GLB preserves textures/materials and uses meters/Y-up. STL is geometry only in mm/Z-up. Use `model_glb` in the viewer, not STL. Source GLB is independently preserved; normalized GLB is reserialized. No printability certification.
 
+Since v1.4.0 a visual evaluation can include `alignment`, `suggestedChanges` and
+`evidence` for an actual stored-GLB review. Evidence contains signed `renderImage`
+and `manifest` artifact receipts, renderer version and model/reference hashes.
+These derived images are not model revisions or new concepts. Older evaluations
+omit these fields. `engine: "not_checked"` must be shown as skipped, never as a
+completed vision call. A comparison that references a visual evaluation is a
+projection of that same critique, not another provider call. Show one paid critique
+per evaluation ID; keep the geometry comparison and acceptance results separate.
+See [model review](MODEL_VISUAL_REVIEW.md) for failure/retry and evidence limits.
+
 ## Errors the UI must surface
 
 - `ACCESS_REQUIRED`: show Claude-owned `/access` form; invoke `unlock`/POST access, then navigate to returned local redirectTo.

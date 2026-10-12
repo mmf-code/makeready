@@ -16,6 +16,8 @@ import {
   type IntelligenceResponseMetadata, type ProviderJobRef, type ProviderResult,
 } from "./providers";
 import { readArtifact, signedArtifact, storeArtifact } from "./storage";
+import { renderModelViews, RENDERER_VERSION } from "./geometry/render";
+import { ModelVisualEvidenceSchema } from "./contracts";
 
 const PayloadSchema = z.object({
   input: z.unknown(), spec: DesignSpecSchema.optional(), parent: RevisionSchema.optional(),
@@ -27,6 +29,11 @@ const PayloadSchema = z.object({
   auditArtifact: ArtifactRefSchema.optional(), manifestArtifact: ArtifactRefSchema.optional(), packageArtifact: ArtifactRefSchema.optional(),
   previewArtifact: ArtifactRefSchema.optional(),
   visual: VisualCritiqueSchema.optional(), visualModel: z.string().min(1).optional(), evaluationComplete: z.boolean().optional(),
+  modelViewsArtifact: ArtifactRefSchema.optional(), modelVisualManifest: ArtifactRefSchema.optional(),
+  modelVisualEvidence: ModelVisualEvidenceSchema.optional(), renderLimitations: z.array(z.string()).optional(),
+  modelVisualDispatchStarted: z.boolean().optional(),
+  modelVisualReviewState: z.enum(["completed", "failed", "submission_unknown", "skipped"]).optional(),
+  visualSkipReason: z.string().optional(),
 }).passthrough();
 type Payload = z.infer<typeof PayloadSchema>;
 type JobRow = {
@@ -63,7 +70,7 @@ async function artifactById(id: string, sessionId: string): Promise<ArtifactRef>
 async function projectCompleted(row: JobRow): Promise<void> {
   if (row.payload.evaluationComplete || !row.data.result?.revisionId) return;
   const record = await checked(getDb().from("design_records").select("data").eq("id", row.data.result.revisionId).eq("session_id", row.session_id).eq("kind", "revision").single());
-  await evaluateRevision(RevisionSchema.parse(record.data), row.payload.plan, row.payload.visual, row.payload.visualModel);
+  await evaluateRevision(RevisionSchema.parse(record.data), row.payload.plan, row.payload.visual, row.payload.visualModel, row.payload.modelVisualEvidence, row.payload.visualSkipReason);
   await checked(getDb().from("generation_jobs").update({ payload: { ...row.payload, evaluationComplete: true } }).eq("id", row.id).eq("data->>status", "completed").select("id").single());
 }
 
@@ -134,13 +141,23 @@ export async function advanceJob(jobId: string): Promise<void> {
     if (ref.sessionId !== row.session_id) throw new AppError("INVALID_ARTIFACT", "Artifact/session mismatch.", 422);
     return ref;
   }
-  async function visual(candidate: ArtifactRef, spec: DesignSpec, reference?: ArtifactRef) {
+  async function visual(candidate: ArtifactRef, spec: DesignSpec, reference?: ArtifactRef, modelViews = false) {
     if (row.payload.visual) return;
-    const parentImage = row.payload.parent?.artifacts.find((artifact) => artifact.kind === "concept_image" || artifact.kind === "source_image");
+    const parentImage = modelViews ? undefined : row.payload.parent?.artifacts.find((artifact) => artifact.kind === "concept_image" || artifact.kind === "source_image");
     const [candidateImageUrl, parentImageUrl, referenceImageUrl] = await Promise.all([
       imageData(candidate), parentImage ? imageData(parentImage) : undefined, reference ? imageData(reference) : undefined,
     ]);
-    await paid("visual_critique", () => intelligence().critiqueVisual({ spec, candidateImageUrl, referenceImageUrl, parentImageUrl, requestedChange: row.payload.plan?.requestedChange }), (result) => ({ visual: result }));
+    const operation = () => intelligence().critiqueVisual({ spec, candidateImageUrl, referenceImageUrl, parentImageUrl, requestedChange: row.payload.plan?.requestedChange, ...(modelViews ? { candidateKind: "model_views" as const, renderLimitations: row.payload.renderLimitations } : {}) });
+    if (modelViews) {
+      // Optional review has its own durable dispatch marker. A killed process must
+      // not quarantine the already-prepared model through mr_claim_job's global
+      // submission-unknown guard, and must never send this paid review again.
+      await checkpoint({ attempts: row.data.attempts + 1, error: null }, { modelVisualDispatchStarted: true });
+      const result = await operation();
+      await checkpoint({}, { visual: result });
+    } else {
+      await paid("visual_critique", operation, (result) => ({ visual: result }));
+    }
   }
   async function finish(kind: Revision["kind"], spec: DesignSpec, artifacts: ArtifactRef[]) {
     const unique = [...new Map(artifacts.map((artifact) => [artifact.id, artifact])).values()];
@@ -277,17 +294,40 @@ export async function advanceJob(jobId: string): Promise<void> {
     const manifest = await storeOnce("manifestArtifact", "manifest", Buffer.from(JSON.stringify(manifestData, null, 2)), "application/json", "json");
     const pack = row.payload.packageArtifact ?? await storeOnce("packageArtifact", "make_package", await makePackage(model, manifestData), "application/zip", "zip");
     const reference = row.payload.sourceImage ?? row.payload.parent?.artifacts.find((artifact) => artifact.kind === "concept_image" || artifact.kind === "source_image");
-    // Bind preview-based visual evaluation to stored, hashed bytes, not an expiring provider URL.
-    let preview = row.payload.previewArtifact;
-    if (!scale && providerResult?.thumbnailUrl && process.env.ENABLE_MODEL_VISUAL_CRITIQUE === "true" && isIntelligenceConfigured()) {
-      if (!preview) {
-        const downloaded = await provider.downloadImage({ ...providerResult, imageUrls: [providerResult.thumbnailUrl] });
-        const ext = downloaded.mimeType === "image/jpeg" ? "jpg" : downloaded.mimeType === "image/webp" ? "webp" : "png";
-        preview = await storeOnce("previewArtifact", "concept_image", downloaded.bytes, downloaded.mimeType, ext);
+    // Exactly one critique of the actual stored mesh. No paid retries, thumbnail substitution,
+    // automatic regeneration, or backfill of already-completed jobs. A review failure must
+    // not discard successful geometry preparation or mark the model as visually accepted.
+    if (!row.payload.modelVisualReviewState) {
+      if (row.payload.modelVisualDispatchStarted && !row.payload.visual) {
+        await checkpoint({}, { modelVisualReviewState: "submission_unknown", visualMethod: "not_checked", visualSkipReason:
+          "The visual review was interrupted before its result was saved. It will not be sent again automatically; the model files are preserved." });
+      } else if (scale || process.env.ENABLE_MODEL_VISUAL_CRITIQUE !== "true" || !isIntelligenceConfigured() || !reference) {
+        await checkpoint({}, { modelVisualReviewState: "skipped", visualMethod: "not_checked", visualSkipReason:
+          scale ? "Uniform scale only; no new visual critique was requested. Refer to the parent revision's visual review." :
+          !reference ? "No verified concept image exists for a visual comparison." :
+          "Visual review is disabled or design intelligence is unavailable. Human inspection is required." });
+      } else {
+        try {
+          if (!row.payload.modelVisualEvidence) {
+            const rendered = await renderModelViews(await readArtifact(normalized));
+            if (rendered.manifest.modelSha256 !== normalized.sha256) throw new AppError("INVALID_ARTIFACT", "Rendered evidence does not match the stored model.", 422);
+            const sheet = await storeOnce("modelViewsArtifact", "concept_image", rendered.sheet, "image/png", "png");
+            const proof = await storeOnce("modelVisualManifest", "manifest", Buffer.from(JSON.stringify({ ...rendered.manifest, referenceSha256: reference.sha256, renderImageSha256: sheet.sha256 })), "application/json", "json");
+            await checkpoint({}, { renderLimitations: rendered.manifest.limitations, modelVisualEvidence: {
+              renderer: RENDERER_VERSION, modelSha256: normalized.sha256, referenceSha256: reference.sha256, renderImage: sheet, manifest: proof,
+            } });
+          }
+          await visual(row.payload.modelVisualEvidence!.renderImage, spec, reference, true);
+          await checkpoint({}, { modelVisualReviewState: "completed", visualMethod: "stored_glb_camera_views" });
+        } catch (error) {
+          const unknown = row.payload.modelVisualDispatchStarted === true && (!(error instanceof ProviderError) || error.kind === "transport" || error.kind === "submission_unknown");
+          await checkpoint({}, { dispatchInFlight: false, modelVisualReviewState: unknown ? "submission_unknown" : "failed", visualMethod: "not_checked",
+            visualSkipReason: unknown ? "The visual review request outcome is uncertain. It will not be sent again automatically; the model files are preserved." :
+              "The visual review could not complete. No visual acceptance is claimed; the model files are preserved for human inspection." });
+        }
       }
-      await visual(preview, spec, reference);
-    } else await checkpoint({}, { visualMethod: "not_checked" });
-    await finish("manufacturing", spec, [source, normalized, stl, audit, manifest, pack, ...(reference ? [reference] : []), ...(preview ? [preview] : [])]);
+    }
+    await finish("manufacturing", spec, [source, normalized, stl, audit, manifest, pack, ...(reference ? [reference] : [])]);
   } catch (error) {
     if (finished) throw error; // Cron retries only the idempotent evaluation projection.
     const detail = errorData(error);
