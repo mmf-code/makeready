@@ -44,4 +44,5 @@ next-env.d.ts
 playwright-report/
 test-results/
 .playwright-mcp/
+/artifacts/live/
 !.env.example

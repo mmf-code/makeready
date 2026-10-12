@@ -93,7 +93,7 @@ export function createMakeReadyMcpServer(services: MakeReadyMcpServices, options
     { readOnlyHint: true, openWorldHint: false });
 
   register("plan_refinement", "Plan refinement",
-    "Interpret feedback and save a change/preserve/action/reason plan. Makes a paid OpenAI planning request, but does not execute image editing or 3D generation. Display this exact plan before apply_refinement. Requires confirm_cost:true and a stable idempotencyKey.",
+    "Interpret feedback and save a change/preserve/action/reason plan. Makes a paid request to the configured LLM, but does not execute image editing or 3D generation. Display this exact plan before apply_refinement. Requires confirm_cost:true and a stable idempotencyKey.",
     McpPlanRefinementInputSchema, McpToolOutputSchemas.plan_refinement,
     ({ confirm_cost, ...input }) => services.planRevision({ ...input, confirmCost: confirm_cost }),
     { readOnlyHint: false, openWorldHint: true });
