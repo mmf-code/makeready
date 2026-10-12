@@ -66,7 +66,7 @@ export default function Home() {
           <div className="flex flex-col gap-4">
             <h1 className="mr-display m-0 text-[clamp(52px,6.6vw,96px)] text-ink">Give your idea a shape.</h1>
             <p className="m-0 max-w-[34em] text-[19px] leading-relaxed text-ink">
-              Describe an object once. Agents design it, critique it, keep what matters and reshape the rest, then hand print-ready files to makers. Every step is a tool call you can follow, and anything that costs money waits for your approval.
+              Describe an object once. Agents design it, critique it, keep what matters and reshape the rest, then hand makers a measured make package. Every step is a tool call you can follow, and anything that costs money waits for your approval.
             </p>
           </div>
           <StartForm />
@@ -90,7 +90,7 @@ export default function Home() {
               <span className="relative z-10 grid size-[62px] place-items-center rounded-full border-[2px] border-ink bg-panel text-[22px] font-black">{i + 1}</span>
               <h3 className="m-0 text-[19px] font-extrabold leading-snug">{h.title}</h3>
               <p className="m-0 text-[15px] text-ink-2">{h.body}</p>
-              <span className={`self-start rounded-full px-2.5 py-0.5 text-[12.5px] font-bold ${h.who.startsWith("Agents") ? "bg-tape text-black" : "border-[1.5px] border-dashed border-ink-2 text-ink-2"}`}>{h.who}</span>
+              <span className={`self-start rounded-[5px] px-1.5 text-[12.5px] font-bold ${h.who.startsWith("Agents") ? "bg-tape text-black" : "border-[1.5px] border-dashed border-ink-2 text-ink-2"}`}>{h.who}</span>
             </li>
           ))}
         </ol>
@@ -103,7 +103,7 @@ export default function Home() {
           <p className="m-0 max-w-[40em] text-[16px] text-ink-2">The same pieces you see in a live run, filled with example data.</p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <Step n="1" title="You say it once" body="Words, a photo, a height. That is the only message a person has to write.">
+          <Step n="1" title="You say it once" body="Words, a photo, a height. That is the only message a person has to write." link={{ href: "#top", label: "Start a run at the top of this page" }}>
             <div className="flex flex-col gap-3 p-5">
               <div className="flex items-start gap-3">
                 <span className="grid size-14 shrink-0 place-items-center rounded-xl border-[1.5px] border-line bg-panel-2 text-[11px] text-ink-2">cat.jpg</span>
@@ -114,17 +114,17 @@ export default function Home() {
               </dl>
             </div>
           </Step>
-          <Step n="2" title="Agents send back what is off" body="A change order names what changes and what must stay. Nothing paid runs until you approve it.">
+          <Step n="2" title="Agents send back what is off" body="A change order names what changes and what must stay. Nothing paid runs until you approve it." link={{ href: "#agents", label: "Step through it in the chat card" }}>
             <div className="flex flex-col gap-2.5 p-5 text-[15px]">
               <div className="flex items-center justify-between border-b-[1.5px] border-dashed border-line pb-2">
                 <b className="text-[17px]">Change order CO-1</b><span className="text-[13px] text-ink-2">Saved, not run</span>
               </div>
               <Row k="Change">Smaller ears</Row>
-              <Row k="Keep"><span className="flex flex-wrap gap-1.5">{["Face", "Scarf", "Colors", "Pose"].map((t) => <span key={t} className="rounded-full border-[1.5px] border-ink px-2.5 text-[13.5px]">{t}</span>)}</span></Row>
+              <Row k="Keep"><span className="flex flex-wrap gap-1.5">{["Face", "Scarf", "Colors", "Pose"].map((t) => <span key={t} className="rounded-[5px] border-[1.5px] border-line px-1.5 text-[13.5px]">{t}</span>)}</span></Row>
               <Row k="How">Edit the concept image, about $0.04</Row>
             </div>
           </Step>
-          <Step n="3" title="A real size, measured" body="The 3D model is scaled to your height, set flat on its base and checked by software. What is not checked says so.">
+          <Step n="3" title="A real size, measured" body="The 3D model is scaled to your height, set flat on its base and checked by software. What is not checked says so." link={{ href: "/demo", label: "Watch a model get measured in a full run" }}>
             <div className="flex flex-wrap items-start gap-5 p-5">
               <div className="flex flex-col"><span className="text-[13px] text-ink-2">Height</span><b className="mr-heading text-[36px] tabular-nums">120.0 mm</b></div>
               <ul className="m-0 flex min-w-[220px] flex-1 list-none flex-col gap-1.5 p-0 text-[14.5px]">
@@ -134,7 +134,7 @@ export default function Home() {
               </ul>
             </div>
           </Step>
-          <Step n="4" title="Files a maker can use" body="A textured model for looks, a print shape in millimeters, the checks and where every file came from.">
+          <Step n="4" title="Files a maker can use" body="A textured model for looks, a print shape in millimeters, the checks and where every file came from." link={{ href: "/agents#get_make_package", label: "See what get_make_package returns" }}>
             <ul className="m-0 flex list-none flex-col gap-1.5 p-5 text-[14.5px]">
               {[["model.glb", "Painted model, in meters"], ["model.stl", "Print shape, millimeters, Z up"], ["audit.json", "Every check with its method"], ["manifest.json", "File fingerprints and origins"]].map(([f, d]) => (
                 <li key={f} className="flex justify-between gap-3 border-b border-line pb-1.5 last:border-0"><code className="font-mono text-[13.5px]">{f}</code><span className="text-right text-ink-2">{d}</span></li>
@@ -159,7 +159,7 @@ export default function Home() {
               ["Say what you want", "“Use MakeReady to make a 12 cm hand-painted figurine of my cat.”"],
             ].map(([t, d], i) => (
               <li key={t} className="flex gap-4">
-                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-tape font-black text-black">{i + 1}</span>
+                <span className="grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] border-[#5a5f68] font-black">{i + 1}</span>
                 <span className="flex flex-col"><b className="text-[16px]">{t}</b><span className="text-[15px] text-[#c9ccd2]">{d}</span></span>
               </li>
             ))}
@@ -173,20 +173,23 @@ export default function Home() {
           <ChatPreview />
         </div>
         <div className="flex min-w-0 flex-col gap-3 lg:col-span-2">
-          <h3 className="m-0 flex items-center gap-2 text-[16px] font-bold"><Hat kind="foreman" className="size-5 text-[#f2f2ee]" />Tools any agent can call</h3>
+          <h3 className="m-0 flex items-center gap-2 text-[16px] font-bold"><Hat kind="foreman" className="size-5 text-[#f2f2ee]" />Tools any agent can call<span className="text-[13.5px] font-normal text-[#a9aeb6]">Each one opens its input and output in the agent guide.</span></h3>
           <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-2 p-0">
             {DESIGN_TOOLS.map((t) => (
-              <li key={t.name} className="flex min-w-0 flex-col gap-1 rounded-xl bg-[#23262b] px-3.5 py-2.5">
-                <code className="font-mono text-[13.5px] font-medium">{t.name}</code>
-                <span className="text-[14px] text-[#c9ccd2]">{t.does}</span>
-                <span className={`mt-0.5 self-start rounded-full px-2 text-[12px] font-bold ${t.cost.startsWith("Paid") ? "bg-tape text-black" : "border-[1.2px] border-[#5a5f68]"}`}>{t.cost}</span>
+              <li key={t.name} className="flex min-w-0">
+                <Link href={`/agents#${t.name}`} className="group flex w-full min-w-0 flex-col gap-1 rounded-xl border-[1.5px] border-transparent bg-[#23262b] px-3.5 py-2.5 transition-colors hover:border-tape focus-visible:border-tape focus-visible:outline-none">
+                  <code className="font-mono text-[13.5px] font-medium underline-offset-4 group-hover:underline">{t.name}</code>
+                  <span className="text-[14px] text-[#c9ccd2]">{t.does}</span>
+                  <span className={`mt-0.5 self-start rounded-[5px] px-1.5 text-[12px] font-bold ${t.cost.startsWith("Paid") ? "bg-tape text-black" : "border-[1.2px] border-[#5a5f68]"}`}>{t.cost}</span>
+                </Link>
               </li>
             ))}
           </ul>
           <div className="flex flex-wrap items-center gap-1.5 pt-1">
             <span className="mr-1 text-[14px] font-bold">Maker agents speak a job contract:</span>
-            {MAKER_TOOLS.map((t) => <code key={t} className="rounded-full border-[1.5px] border-dashed border-[#8a8f98] px-3 py-1 font-mono text-[12.5px]">{t}</code>)}
+            <span className="font-mono text-[13px] text-[#c9ccd2]">{MAKER_TOOLS.join(", ")}</span>
             <span className="text-[13px] text-[#a9aeb6]">Sandbox makers in this demo.</span>
+            <Link href="/demo" className="inline-flex min-h-11 items-center px-1 text-[14px] font-bold text-tape underline underline-offset-4">Watch them work in a full run</Link>
           </div>
         </div>
       </section>
@@ -207,7 +210,7 @@ export default function Home() {
           {TIMELINE.map((c) => (
             <li key={c.at + c.what} className="grid grid-cols-[56px_76px_1fr] items-baseline gap-3 border-b border-line py-2.5 last:border-0">
               <time className="font-mono text-[14px] tabular-nums">{c.at}</time>
-              <span className={`justify-self-start rounded-full px-2.5 text-[12.5px] font-bold ${c.who === "Codex" ? "bg-ink text-panel" : "bg-tape text-black"}`}>{c.who}</span>
+              <span className={`justify-self-start rounded-[5px] px-1.5 text-[12.5px] font-bold ${c.who === "Codex" ? "bg-ink text-panel" : "bg-tape text-black"}`}>{c.who}</span>
               <span className="text-[15.5px]">{c.what}</span>
             </li>
           ))}
@@ -266,14 +269,18 @@ export default function Home() {
   );
 }
 
-function Step({ n, title, body, children }: { n: string; title: string; body: string; children: ReactNode }) {
+function Step({ n, title, body, link, children }: { n: string; title: string; body: string; link: { href: string; label: string }; children: ReactNode }) {
+  const linkClass = "inline-flex min-h-11 items-center px-5 text-[15px] font-bold underline decoration-tape decoration-[3px] underline-offset-4 hover:decoration-ink";
   return (
     <article className="flex flex-col overflow-hidden rounded-[22px] border-[1.5px] border-line bg-panel">
       <div className="flex gap-4 border-b-[1.5px] border-line p-5">
-        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-tape text-[18px] font-black text-black">{n}</span>
+        <span className="grid size-10 shrink-0 place-items-center rounded-full border-[1.5px] border-ink text-[18px] font-black">{n}</span>
         <div className="flex flex-col gap-1"><h3 className="m-0 text-[20px] font-extrabold">{title}</h3><p className="m-0 text-[15px] text-ink-2">{body}</p></div>
       </div>
       <div className="flex-1">{children}</div>
+      <div className="border-t border-line py-1">
+        {link.href.startsWith("/") ? <Link href={link.href} className={linkClass}>{link.label}</Link> : <a href={link.href} className={linkClass}>{link.label}</a>}
+      </div>
     </article>
   );
 }

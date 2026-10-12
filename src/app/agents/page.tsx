@@ -55,10 +55,10 @@ export default function AgentsPage() {
         <h2 id="tools-title" className="mr-heading m-0 text-[28px]">Tools</h2>
         <div className="flex flex-col gap-3">
           {TOOLS.map((t) => (
-            <article key={t.name} className="grid gap-3 rounded-[18px] border-[1.5px] border-line bg-panel p-5 md:grid-cols-[220px_minmax(0,1fr)]">
+            <article key={t.name} id={t.name} className="grid scroll-mt-6 gap-3 rounded-[18px] border-[1.5px] border-line bg-panel p-5 target:border-ink md:grid-cols-[220px_minmax(0,1fr)]">
               <div className="flex flex-col items-start gap-2">
                 <code className="font-mono text-[16px] font-medium">{t.name}</code>
-                <span className={`rounded-full px-2.5 text-[12.5px] font-bold ${t.paid ? "bg-tape text-black" : "border-[1.2px] border-line"}`}>{t.paid ? "Paid, ask first" : t.readOnly ? "Read only" : "Free"}</span>
+                <span className={`rounded-[5px] px-1.5 text-[12.5px] font-bold ${t.paid ? "bg-tape text-black" : "border-[1.2px] border-line"}`}>{t.paid ? "Paid, ask first" : t.readOnly ? "Read only" : "Free"}</span>
               </div>
               <div className="flex min-w-0 flex-col gap-2 text-[15px]">
                 <p className="m-0 font-semibold">{t.does}</p>

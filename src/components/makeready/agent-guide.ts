@@ -17,6 +17,7 @@ export const RULES = [
   "Ask the person before any paid tool. Send confirm_cost: true only after they agreed to that step and its cost.",
   "Give every paid call a stable idempotencyKey. If a call fails or times out, retry with the same key; never invent a new key to resend.",
   "If a job is submission_unknown, do not start another generation. Read it again with get_design and tell the person.",
+  "Set use to what the object is for, for example \"CNC machined aluminum part\". Without it MakeReady assumes a paintable figurine.",
   "Concept images have no real size. Only manufacturing revisions are measured, and only in millimeters after scaling.",
   "Read notChecked on every result and tell the person what was not verified. Never call a model print-ready.",
   "Approvals are per revision and per file. A new revision needs its own approval before generate_model.",
@@ -25,7 +26,7 @@ export const RULES = [
 
 export const TOOLS: ToolDoc[] = [
   { name: "start_design", paid: true, readOnly: false, does: "Opens a session and makes concept v1 from a message and an optional photo.",
-    input: "{ prompt: string, heightMm?: number = 120, use?: string, photo?: { download_url, file_id, mime_type?, file_name? }, confirm_cost: true, idempotencyKey: string }",
+    input: "{ prompt: string, heightMm?: number = 120, use?: string = \"Paintable tabletop figurine\", photo?: { download_url, file_id, mime_type?, file_name? }, confirm_cost: true, idempotencyKey: string }",
     returns: "{ sessionId, job }", when: "The person describes something they want made." },
   { name: "get_design", paid: false, readOnly: true, does: "Reads the whole session: versions, jobs, change orders, checks and decisions.",
     input: "{ sessionId: uuid }", returns: "DesignSession", when: "To follow progress, after any paid call, and before deciding the next step." },
