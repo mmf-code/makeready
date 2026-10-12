@@ -519,7 +519,7 @@ function ProductionLine({ stations, tokenAt, sandboxStarted, sandboxFinished }: 
             </div>
           ))}
           <div aria-hidden="true" className="mr-tape absolute inset-x-0 bottom-2 h-2.5 rounded-sm" />
-          {left !== null && <div aria-hidden="true" className="absolute -bottom-2 -ml-[29px] transition-[left] duration-700" style={{ left }}><Hamur size={58} mood={mood} cue={{ act: "hop", key: tokenAt }} /></div>}
+          {left !== null && <div aria-hidden="true" className="absolute -bottom-2 -ml-[29px] transition-[left] duration-700" style={{ left }}><Hamur size={58} mood={mood} holding cue={{ act: "hop", key: tokenAt }} /></div>}
         </div>
       </div>
       <p className="m-0 text-[13px] text-ink-2">

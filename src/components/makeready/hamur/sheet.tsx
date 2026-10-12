@@ -13,20 +13,23 @@ const MOODS: { id: Mood; label: string; use: string }[] = [
   { id: "happy", label: "Happy", use: "Delivered" },
 ];
 const ACTS: { id: Act; label: string; use: string }[] = [
-  { id: "kavrar", label: "Grab the idea", use: "You approve the start" },
-  { id: "sekil", label: "Hold the idea", use: "A version is saved" },
-  { id: "hop", label: "Hop", use: "Moves to the next station" },
-  { id: "cheer", label: "Cheer", use: "Checks passed" },
-  { id: "surprised", label: "Surprised", use: "A problem arrives" },
-  { id: "shake", label: "Shake", use: "A request failed" },
-  { id: "think", label: "Think", use: "The foreman is planning" },
-  { id: "nod", label: "Nod", use: "A change order is approved" },
-  { id: "wiggle", label: "Wiggle", use: "Pressed for fun" },
+  { id: "kavrar", label: "Grab the idea", use: "You approve the start. Reaches, presses the dough, brings it in, hugs." },
+  { id: "sekil", label: "Squeeze", use: "A version is saved. Hugs the dough tight, twice." },
+  { id: "drop", label: "Put it down", use: "The idea goes to a maker." },
+  { id: "poke", label: "Poke the dough", use: "Same as clicking the dough." },
+  { id: "hop", label: "Hop", use: "Moves to the next station." },
+  { id: "cheer", label: "Cheer", use: "Checks passed." },
+  { id: "surprised", label: "Surprised", use: "A problem arrives." },
+  { id: "shake", label: "Shake", use: "A request failed." },
+  { id: "think", label: "Think", use: "The foreman is planning." },
+  { id: "nod", label: "Nod", use: "A change order is approved." },
+  { id: "wiggle", label: "Wiggle", use: "Pressed for fun." },
 ];
 const RANGES: Record<keyof Pose, [number, number, number]> = {
   sx: [0.7, 1.3, 0.01], sy: [0.7, 1.3, 0.01], lift: [0, 140, 1], skew: [-0.3, 0.3, 0.01], tilt: [-15, 15, 0.5],
-  dip: [-0.5, 1, 0.01], humpL: [-0.6, 0.8, 0.01], humpR: [-0.6, 0.8, 0.01], spread: [-1, 1, 0.01], reach: [0, 1, 0.01],
-  eye: [0, 1.2, 0.01], eyeScale: [0.6, 1.6, 0.01], lookX: [-1, 1, 0.01], lookY: [-1, 1, 0.01], pebble: [0, 1, 0.01], grab: [0, 1, 0.01],
+  dip: [-0.5, 1, 0.01], humpL: [-0.6, 0.8, 0.01], humpR: [-0.6, 0.8, 0.01], spread: [-1, 1, 0.01], reach: [0, 1.2, 0.01], curl: [0, 1, 0.01], hug: [0, 1, 0.01],
+  eye: [0, 1.2, 0.01], eyeScale: [0.6, 1.6, 0.01], lookX: [-1, 1, 0.01], lookY: [-1, 1, 0.01],
+  ballX: [150, 700, 1], ballY: [150, 360, 1], ballSX: [0.6, 1.5, 0.01], ballSY: [0.6, 1.5, 0.01], dentA: [-3.14, 3.14, 0.01], dentD: [0, 0.4, 0.01], dentSides: [0, 0.4, 0.01], ballShow: [0, 1, 1],
 };
 const SURFACES: { id: string; label: string; bg: string; paint: HamurPalette; ink: string }[] = [
   { id: "floor", label: "Concrete", bg: "#e7e8e3", paint: PAINT, ink: "#000" },
@@ -34,20 +37,22 @@ const SURFACES: { id: string; label: string; bg: string; paint: HamurPalette; in
   { id: "paper", label: "Paper", bg: "#ffffff", paint: PAINT, ink: "#000" },
 ];
 
-const at = (act: Act | null, u: number, mood: Mood = "idle"): Pose =>
-  frame({ t: 10 + u * (act ? actDuration(act) : 1), mood, act: act ? { name: act, start: 10 } : null, look: { x: 0.25, y: 0 }, blinkAt: -9 });
+const at = (act: Act | null, u: number, mood: Mood = "idle", holding = false): Pose =>
+  frame({ t: 10 + u * (act ? actDuration(act) : 1), mood, act: act ? { name: act, start: 10 } : null, look: { x: 0.25, y: 0 }, blinkAt: -9, holding, ball: true });
 
 const KEYS: { title: string; pose: Pose }[] = [
-  { title: "Rest", pose: { ...REST } },
+  { title: "Rest, idea beside", pose: at(null, 0) },
+  { title: "Notices", pose: at("kavrar", 0.1) },
+  { title: "Reaches", pose: at("kavrar", 0.34) },
+  { title: "Presses the dough", pose: at("kavrar", 0.44) },
+  { title: "Lifts it", pose: at("kavrar", 0.62) },
+  { title: "Hugs it", pose: at("kavrar", 0.92) },
   { title: "Holding", pose: at(null, 0, "holding") },
-  { title: "Grab, reach", pose: at("kavrar", 0.32) },
-  { title: "Grab, closes", pose: at("kavrar", 0.6) },
-  { title: "Hold, squeeze", pose: at("sekil", 0.4) },
-  { title: "Cheer, squash", pose: at("cheer", 0.16) },
-  { title: "Cheer, air", pose: at("cheer", 0.45) },
-  { title: "Surprised", pose: at("surprised", 0.3) },
-  { title: "Think", pose: at("think", 0.5) },
-  { title: "Worried", pose: at(null, 0, "worried") },
+  { title: "Squeeze", pose: at("sekil", 0.27, "holding") },
+  { title: "Kneading", pose: at(null, 0.24, "working") },
+  { title: "Cheer, air", pose: at("cheer", 0.45, "holding") },
+  { title: "Surprised", pose: at("surprised", 0.3, "holding") },
+  { title: "Worried", pose: at(null, 0, "worried", true) },
 ];
 
 export function HamurSheet() {
@@ -58,7 +63,6 @@ export function HamurSheet() {
   const [editing, setEditing] = useState(false);
   const [edit, setEdit] = useState<Pose>({ ...REST });
   const [copied, setCopied] = useState(false);
-  const [lastAct, setLastAct] = useState<Act | null>(null);
   const anchor = useRef<HTMLDivElement>(null);
   const live = useHamur({ mood, gaze, speed, freeze: editing ? edit : null }, anchor);
 
@@ -79,7 +83,7 @@ export function HamurSheet() {
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
           <div ref={anchor} className="grid min-h-[480px] place-items-center rounded-[22px] border-[1.5px] border-line" style={{ background: surface.bg }}>
-            <HamurArt pose={live.pose} size={460} paint={surface.paint} ground label={`Hamur, ${mood}${lastAct ? `, after ${lastAct}` : ""}`} />
+            <HamurArt pose={live.pose} size={500} paint={surface.paint} ground onBall={editing ? undefined : () => live.poke()} />
           </div>
 
           <Group title="Mood" note="What Hamur does between moves.">
@@ -87,9 +91,10 @@ export function HamurSheet() {
               <Chip key={m.id} on={mood === m.id && !editing} onClick={() => { setEditing(false); setMood(m.id); }} title={m.use}>{m.label}</Chip>
             ))}
           </Group>
+          <p className="m-0 text-[14px] text-ink-2">Click the dough to squish it. Hamur grabs it from the ground, or hugs it tighter if it is already holding it.</p>
           <Group title="Moves" note="Each one plays once. Hover a move to see where the app uses it.">
             {ACTS.map((a) => (
-              <Chip key={a.id} onClick={() => { setEditing(false); setLastAct(a.id); live.play(a.id); }} title={a.use}>{a.label}</Chip>
+              <Chip key={a.id} onClick={() => { setEditing(false); live.play(a.id); }} title={a.use}>{a.label}</Chip>
             ))}
           </Group>
           <div className="flex flex-wrap gap-6">
