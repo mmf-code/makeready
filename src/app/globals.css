@@ -1,26 +1,236 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * MakeReady tokens, HAMUR identity: soft periwinkle clay on an off-white studio
+ * sweep, stone greige, one coral accent line. "Değişir. Kendisi kalır."
+ * Body styles are scoped to .mr-app so the MCP view (which bundles this file)
+ * keeps the host's own background and font.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --floor: #f3f3f1;
+  --panel: #ffffff;
+  --panel-2: #f1f0ed;
+  --ink: #1c1c21;
+  --ink-2: #63636c;
+  --line: #e1e0dc;
+  --clay: #5056d6;
+  --clay-ink: #ffffff;
+  --clay-soft: #e7e8fb;
+  --clay-deep: #3a3fb0;
+  --coral: #ee6a5a;
+  --stone: #d6d2ca;
+  --stage-top: #ffffff;
+  --stage-bottom: #e7e6e2;
+  --stage-ink: #1c1c21;
+  --stage-2: #6b6b73;
+  --stage-line: #d9d8d3;
+  --go: #2e9e6e;
+  --wait: #e3a23a;
+  --stop: #d9473e;
+  --hat-foreman: #ffffff;
+  --hat-design: #ee6a5a;
+  --hat-inspect: #2e9e6e;
+  --hat-tech: #5056d6;
+  --hat-maker: #e3a23a;
+  --hat-courier: #f08c4a;
+  --hat-buyer: #b8b8c2;
+  --uv: #8b5cff;
+  /* legacy aliases */
+  --tape: var(--clay);
+  --tape-ink: var(--clay-ink);
+
+  --background: var(--floor);
+  --foreground: var(--ink);
+  --card: var(--panel);
+  --card-foreground: var(--ink);
+  --popover: var(--panel);
+  --popover-foreground: var(--ink);
+  --primary: var(--clay);
+  --primary-foreground: var(--clay-ink);
+  --secondary: var(--panel-2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--panel-2);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--clay-soft);
+  --accent-foreground: var(--clay-deep);
+  --destructive: var(--stop);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--clay);
+  --radius: 1rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --floor: #141418;
+    --panel: #1d1d23;
+    --panel-2: #26262d;
+    --ink: #f1f1f4;
+    --ink-2: #a5a5af;
+    --line: #34343c;
+    --clay: #7c81f2;
+    --clay-ink: #0f1033;
+    --clay-soft: #2a2c57;
+    --clay-deep: #b9bcff;
+    --stage-top: #2c2d35;
+    --stage-bottom: #1b1b21;
+    --stage-ink: #f1f1f4;
+    --stage-2: #a5a5af;
+    --stage-line: #3a3a44;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"],
+.dark {
+  --floor: #141418;
+  --panel: #1d1d23;
+  --panel-2: #26262d;
+  --ink: #f1f1f4;
+  --ink-2: #a5a5af;
+  --line: #34343c;
+  --clay: #7c81f2;
+  --clay-ink: #0f1033;
+  --clay-soft: #2a2c57;
+  --clay-deep: #b9bcff;
+  --stage-top: #2c2d35;
+  --stage-bottom: #1b1b21;
+  --stage-ink: #f1f1f4;
+  --stage-2: #a5a5af;
+  --stage-line: #3a3a44;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-floor: var(--floor);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-line: var(--line);
+  --color-tape: var(--tape);
+  --color-tape-ink: var(--tape-ink);
+  --color-clay: var(--clay);
+  --color-clay-ink: var(--clay-ink);
+  --color-clay-soft: var(--clay-soft);
+  --color-clay-deep: var(--clay-deep);
+  --color-coral: var(--coral);
+  --color-stone: var(--stone);
+  --color-stage-ink: var(--stage-ink);
+  --color-stage-2: var(--stage-2);
+  --color-stage-line: var(--stage-line);
+  --color-go: var(--go);
+  --color-wait: var(--wait);
+  --color-stop: var(--stop);
+  --color-uv: var(--uv);
+
+  --font-sans: var(--font-nunito), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-bagel), "Arial Rounded MT Bold", ui-rounded, ui-sans-serif, sans-serif;
+  --font-mono: var(--font-dmmono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-heading: var(--font-display);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body.mr-app {
+    background: var(--floor);
+    color: var(--ink);
+    font-family: var(--font-sans);
+  }
+  .mr-app :focus-visible {
+    outline: 3px solid var(--clay);
+    outline-offset: 3px;
+  }
+  .mr-app h1,
+  .mr-app h2,
+  .mr-app h3 {
+    text-wrap: balance;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .mr-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.005em;
+    line-height: 0.98;
+  }
+  /* Small tracked line from the identity board: used once per page at most. */
+  .mr-kicker {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .mr-rule {
+    display: block;
+    width: 64px;
+    height: 3px;
+    border-radius: 3px;
+    background: var(--coral);
+  }
+  .mr-stage {
+    background: radial-gradient(120% 90% at 50% 30%, var(--stage-top) 0%, var(--stage-bottom) 100%);
+    color: var(--stage-ink);
+  }
+  .mr-hazard {
+    background: var(--coral);
+  }
+  /* The route between builders: a row of clay pellets. */
+  .mr-tape {
+    background: radial-gradient(circle, var(--clay) 4.5px, transparent 5px) 0 50% / 20px 100% repeat-x;
+    opacity: 0.85;
+  }
+  .mr-paper {
+    background: #f6f6f4;
+  }
+  .mr-paper img {
+    mix-blend-mode: multiply;
+  }
+  .mr-hatch {
+    background-color: var(--panel-2);
+    background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-2) 28%, transparent) 0 2px, transparent 2px 10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-app *,
+  .mr-app *::before,
+  .mr-app *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

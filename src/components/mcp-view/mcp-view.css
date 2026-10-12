@@ -1,0 +1,407 @@
+/*
+ * MakeReady MCP View. Host CSS variables first, then light/dark fallbacks.
+ * System font only. Brand yellow only on the primary button and small accents.
+ */
+.mrv {
+  --mrv-bg: var(--color-background-primary, #ffffff);
+  --mrv-bg-2: var(--color-background-secondary, #f4f4f2);
+  --mrv-text: var(--color-text-primary, #111111);
+  --mrv-text-2: var(--color-text-secondary, #5c6068);
+  --mrv-border: var(--color-border-primary, #e3e3e3);
+  --mrv-danger: var(--color-text-danger, #b42318);
+  --mrv-warning: var(--color-text-warning, #9a5200);
+  --mrv-ring: var(--color-ring-primary, #111111);
+  /* HAMUR identity: periwinkle clay on the primary button and small accents only. */
+  --mrv-tape: #5056d6;
+  --mrv-tape-ink: #ffffff;
+  --mrv-stage: #ecebe7;
+  --mrv-stage-ink: #4a4a52;
+  --mrv-go: #2e9e6e;
+  --mrv-tech: #5056d6;
+  --mrv-stop: #d9473e;
+  --mrv-wait: #e3a23a;
+
+  container-type: inline-size;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 16px;
+  background: var(--mrv-bg);
+  color: var(--mrv-text);
+  font-family: var(--font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
+  font-size: var(--font-text-sm-size, 14px);
+  line-height: var(--font-text-sm-line-height, 1.45);
+  -webkit-font-smoothing: antialiased;
+  color-scheme: light;
+}
+
+.mrv[data-theme="dark"] {
+  --mrv-bg: var(--color-background-primary, #1f2023);
+  --mrv-bg-2: var(--color-background-secondary, #2a2b2f);
+  --mrv-text: var(--color-text-primary, #f2f2f0);
+  --mrv-text-2: var(--color-text-secondary, #a7abb2);
+  --mrv-border: var(--color-border-primary, #3a3c41);
+  --mrv-danger: var(--color-text-danger, #ff8a80);
+  --mrv-warning: var(--color-text-warning, #ffb45c);
+  --mrv-ring: var(--color-ring-primary, #f2f2f0);
+  color-scheme: dark;
+}
+
+.mrv *,
+.mrv *::before,
+.mrv *::after {
+  box-sizing: border-box;
+}
+
+.mrv p,
+.mrv h2,
+.mrv ul,
+.mrv ol,
+.mrv dl,
+.mrv dd {
+  margin: 0;
+  padding: 0;
+}
+
+.mrv-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Header: small colored dot + who acted. */
+.mrv-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  color: var(--mrv-text-2);
+  font-size: 13px;
+}
+.mrv-head .mrv-dot {
+  margin-top: 5px;
+}
+.mrv-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--mrv-text-2);
+}
+.mrv-dot[data-tone="foreman"] { background: #ffffff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.mrv-dot[data-tone="tech"] { background: var(--mrv-tech); }
+.mrv-dot[data-tone="inspect"] { background: var(--mrv-go); }
+.mrv-dot[data-tone="problem"] { background: var(--mrv-stop); }
+.mrv-dot[data-tone="attention"] { background: var(--mrv-wait); }
+
+.mrv-titlerow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.mrv-title {
+  min-width: 0;
+  font-size: var(--font-heading-sm-size, 17px);
+  line-height: 1.3;
+  font-weight: var(--font-weight-semibold, 600);
+  overflow-wrap: anywhere;
+}
+.mrv-meta {
+  flex: none;
+  color: var(--mrv-text-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.mrv-muted {
+  color: var(--mrv-text-2);
+}
+.mrv-small {
+  font-size: 13px;
+}
+
+/* Two columns from 560px container width. */
+.mrv-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+@container (min-width: 560px) {
+  .mrv-split {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    align-items: start;
+  }
+}
+
+/* Definition rows for the change order. */
+.mrv-rows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.mrv-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+.mrv-row dt {
+  color: var(--mrv-text-2);
+  font-size: 13px;
+}
+.mrv-row dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mrv-strong {
+  font-weight: var(--font-weight-semibold, 600);
+}
+
+.mrv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+}
+.mrv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--mrv-border);
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+.mrv-chip svg {
+  flex: none;
+  color: var(--mrv-text-2);
+}
+
+.mrv-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mrv-text-2);
+  font-size: 13px;
+}
+
+/* Dark stage tile for concept images. */
+.mrv-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  max-height: 260px;
+  border-radius: var(--border-radius-lg, 12px);
+  background: var(--mrv-stage);
+  color: var(--mrv-stage-ink);
+  overflow: hidden;
+}
+.mrv[data-theme="dark"] .mrv-stage {
+  border: 1px solid var(--mrv-border);
+}
+.mrv-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 260px;
+  object-fit: contain;
+}
+.mrv-stage-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+}
+
+/* Big measured number. */
+.mrv-measure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mrv-big {
+  font-size: 34px;
+  line-height: 1.05;
+  font-weight: var(--font-weight-bold, 700);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.mrv-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+}
+.mrv-facts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mrv-facts svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--mrv-text-2);
+}
+
+/* Five-step job progress. */
+.mrv-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+.mrv-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  color: var(--mrv-text-2);
+}
+.mrv-step-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--mrv-border);
+  border-radius: 999px;
+  color: var(--mrv-bg);
+}
+.mrv-step[data-state="done"] { color: var(--mrv-text); }
+.mrv-step[data-state="done"] .mrv-step-mark {
+  border-color: var(--mrv-text);
+  background: var(--mrv-text);
+}
+.mrv-step[data-state="current"] {
+  color: var(--mrv-text);
+  font-weight: var(--font-weight-semibold, 600);
+}
+.mrv-step[data-state="current"] .mrv-step-mark {
+  border: 5px solid var(--mrv-tech);
+}
+.mrv-step[data-state="stuck"] {
+  color: var(--mrv-text);
+  font-weight: var(--font-weight-semibold, 600);
+}
+.mrv-step[data-state="stuck"] .mrv-step-mark {
+  border: 5px solid var(--mrv-wait);
+}
+.mrv-step-note {
+  margin-left: auto;
+  color: var(--mrv-text-2);
+  font-weight: var(--font-weight-normal, 400);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Honest explanation block for failed / unknown states. */
+.mrv-note {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--mrv-border);
+  border-left: 3px solid var(--mrv-wait);
+  border-radius: var(--border-radius-md, 8px);
+  background: var(--mrv-bg-2);
+}
+.mrv-note[data-tone="problem"] { border-left-color: var(--mrv-stop); }
+.mrv-note svg {
+  flex: none;
+  margin-top: 2px;
+}
+.mrv-note[data-tone="problem"] svg { color: var(--mrv-stop); }
+.mrv-note[data-tone="attention"] svg { color: var(--mrv-wait); }
+.mrv-note-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Actions: at most two buttons, 44px tap targets, error text under the button. */
+.mrv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mrv-action {
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.mrv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--mrv-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mrv-text);
+  font: inherit;
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 120ms ease, opacity 120ms ease;
+}
+.mrv-btn:hover { background: var(--mrv-bg-2); }
+.mrv-btn:focus-visible {
+  outline: 2px solid var(--mrv-ring);
+  outline-offset: 2px;
+}
+.mrv-btn[data-primary] {
+  border-color: var(--mrv-tape);
+  background: var(--mrv-tape);
+  color: var(--mrv-tape-ink);
+}
+.mrv-btn[data-primary]:hover { background: #f0c800; }
+.mrv-btn:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+.mrv-error {
+  color: var(--mrv-danger);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.mrv-foot {
+  padding-top: 12px;
+  border-top: 1px solid var(--mrv-border);
+  color: var(--mrv-text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Waiting state: a skeleton block, no spinner. */
+.mrv-skeleton {
+  height: 96px;
+  border-radius: var(--border-radius-lg, 12px);
+  background: var(--mrv-bg-2);
+  animation: mrv-pulse 1.6s ease-in-out infinite;
+}
+@keyframes mrv-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mrv-skeleton { animation: none; }
+  .mrv-btn { transition: none; }
+}
