@@ -12,7 +12,7 @@ import { GeometryPreparationError, prepareModel, type PreparedModel } from "./ge
 import { evaluateRevision } from "./harness/evaluate";
 import { makePackage } from "./make-package";
 import {
-  assertImageInput, createDesignIntelligence, createFalProvider, isIntelligenceConfigured, MAX_IMAGE_BYTES, ProviderError, VisualCritiqueSchema,
+  assertImageInput, createDesignIntelligence, createFalProvider, intelligenceProvider, isIntelligenceConfigured, MAX_IMAGE_BYTES, ProviderError, VisualCritiqueSchema,
   type IntelligenceResponseMetadata, type ProviderJobRef, type ProviderResult,
 } from "./providers";
 import { readArtifact, signedArtifact, storeArtifact } from "./storage";
@@ -98,7 +98,7 @@ export async function advanceJob(jobId: string): Promise<void> {
   }
   function intelligence() {
     return createDesignIntelligence({ onResponse: async (metadata: IntelligenceResponseMetadata) => {
-      await checkpoint(row.provider_ref ? {} : { providerRequestId: metadata.responseId, provider: process.env.LLM_BASE_URL?.trim() ? null : "openai" }, {
+      await checkpoint(row.provider_ref ? {} : { providerRequestId: metadata.responseId, provider: intelligenceProvider() }, {
         [`${metadata.operation}Usage`]: metadata,
         ...(metadata.operation === "visual_critique" ? { visualModel: metadata.model } : {}),
       });

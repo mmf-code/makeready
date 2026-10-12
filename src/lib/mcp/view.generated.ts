@@ -5,8 +5,8 @@ export const mcpView = {
   "sha256": "097edccc49cd363637a30c24e9ee78c341444fce65268cdee16189342a8bd1dd",
   "resourceUri": "ui://makeready/view-097edccc49cd.html",
   "sourceHashes": {
-    "package.json": "d07591d081dd0223ecc5fc589124c4a01ef9864cef156416ae060d59e0f54099",
-    "pnpm-lock.yaml": "88d5e499b8807d9fa05cd7386f8f0cfb33d7e30fafa0f30ea5b037037b8d7a12",
+    "package.json": "6bf07b9cf4bcc9abb61efbbd0b7e80127f5b5e40269a632022c581eeb8af5d99",
+    "pnpm-lock.yaml": "648d7123729c425bc7de81e9cf3db3bc43233088b34c1a125ba7ac88a64ccf3b",
     "scripts/build-mcp-view.mts": "c27e08b0ec8fe4ece91f9f7923cda0be955756ec77244ef6b7cc67a4f3054b21",
     "src/app/globals.css": "446c473fe32ea656f46217b9c104e42bdea843ae118c24ddae637a70cbd5ad29",
     "src/components/mcp-view/cards.tsx": "7a8ff1c79557d0739c3610b3936f7cbe1a48bb7440e8112969662964e7d30eff",

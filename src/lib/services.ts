@@ -12,7 +12,7 @@ import {
 import { checked, getDb, rpc } from "./db";
 import { AppError } from "./errors";
 import { assertImage, bucket, hashBytes, readArtifact, signedArtifact, storeArtifact } from "./storage";
-import { createDesignIntelligence, isIntelligenceConfigured, ProviderError } from "./providers";
+import { createDesignIntelligence, intelligenceProvider, isIntelligenceConfigured, ProviderError } from "./providers";
 
 const now = () => new Date().toISOString();
 const emptySpec = () => DesignSpecSchema.parse({description:"Describe the object you want to make.",objectType:"Unspecified object",use:"Paintable tabletop figurine",targetHeightMm:120,preserve:[],changeable:[],process:"resin_candidate"});
@@ -84,7 +84,7 @@ export function createServices(scopeId="demo") {
   async function enqueue(sessionId:string,input:{idempotencyKey:string},operation:GenerationJob["operation"],cost:number,payload:Record<string,unknown>,parentRevisionId:string|null=null,planId:string|null=null) {
     await sessionRow(sessionId);
     const timestamp=now();
-    const job=GenerationJobSchema.parse({id:randomUUID(),sessionId,parentRevisionId,planId,operation,status:"created",progress:0,provider:operation==="planning"?(process.env.LLM_BASE_URL?null:"openai"):operation==="scale"||operation==="concept"&&payload.sourceImage?"local":"fal",providerRequestId:null,attempts:0,estimatedCostUsd:cost,result:null,error:null,createdAt:timestamp,updatedAt:timestamp});
+    const job=GenerationJobSchema.parse({id:randomUUID(),sessionId,parentRevisionId,planId,operation,status:"created",progress:0,provider:operation==="planning"?intelligenceProvider():operation==="scale"||operation==="concept"&&payload.sourceImage?"local":"fal",providerRequestId:null,attempts:0,estimatedCostUsd:cost,result:null,error:null,createdAt:timestamp,updatedAt:timestamp});
     return GenerationJobSchema.parse(await rpc("mr_create_job",{p_scope:scopeId,p_job:job,p_payload:payload,p_key:input.idempotencyKey,p_input_hash:fingerprint(input),p_reserve_micros:Math.ceil(cost*1_000_000),p_cap_micros:budgetMicros()}));
   }
   async function startDesign(raw:StartDesignInput) {
@@ -147,7 +147,7 @@ export function createServices(scopeId="demo") {
       }
       const image=parent.artifacts.find(a=>a.kind==="concept_image"||a.kind==="source_image");
       const parentImageUrl=image?`data:${image.mimeType};base64,${Buffer.from(await readArtifact(image)).toString("base64")}`:undefined;
-      await rpc("mr_patch_job",{p_id:job.id,p_fence:fence,p_patch:{status:"planning",provider:process.env.LLM_BASE_URL?null:"openai",attempts:1},p_payload:{dispatchInFlight:true}});
+      await rpc("mr_patch_job",{p_id:job.id,p_fence:fence,p_patch:{status:"planning",provider:intelligenceProvider(),attempts:1},p_payload:{dispatchInFlight:true}});
       dispatchInFlight=true;
       const intelligence=createDesignIntelligence({onResponse:async metadata=>{
         await rpc("mr_patch_job",{p_id:job.id,p_fence:fence,p_patch:{providerRequestId:metadata.responseId},p_payload:{intelligenceReceipt:metadata}});

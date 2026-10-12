@@ -77,8 +77,12 @@ async function main() {
     if (!project || project.name?.toLowerCase() !== "makeready") fail("The Supabase Management API did not confirm an exact dedicated MakeReady project name. Refusing to target EVRE/CrafThinkERA or an unknown project.");
     console.info("supabase_project: VERIFIED MakeReady");
   } else {
-    if (process.env.SUPABASE_PROJECT_NAME?.toLowerCase() !== "makeready") fail("Without a management token, explicitly set SUPABASE_PROJECT_NAME=makeready after checking the dedicated project in the dashboard.");
-    console.info("supabase_project: DASHBOARD_ASSERTED makeready (management identity not independently verified)");
+    if (process.env.SUPABASE_PROJECT_REF === reference) {
+      console.info("supabase_project: EXPLICIT_REF_CONFIRMED (management project name not independently verified)");
+    } else {
+      if (process.env.SUPABASE_PROJECT_NAME?.toLowerCase() !== "makeready") fail("Without a management token, explicitly confirm SUPABASE_PROJECT_REF or set SUPABASE_PROJECT_NAME=makeready after checking the dedicated project.");
+      console.info("supabase_project: DASHBOARD_ASSERTED makeready (management identity not independently verified)");
+    }
   }
   const migrationFiles = (await readdir(join(root, "supabase/migrations"))).filter((name) => name.endsWith(".sql")).sort();
   if (migrate && migrationFiles.length === 0) fail("No versioned MakeReady migrations exist.");
@@ -143,6 +147,15 @@ function configuredBudget(): number {
 
 function languageEnvironment(required: boolean): Record<string, string> {
   const custom = process.env.LLM_BASE_URL?.trim();
+  if (process.env.LLM_API_STYLE?.trim() === "anthropic") {
+    const key = process.env.LLM_API_KEY?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
+    const model = process.env.LLM_MODEL?.trim();
+    if (!key || !model) fail("Anthropic mode requires LLM_API_KEY or ANTHROPIC_API_KEY, plus an explicit LLM_MODEL. It never falls back to OpenAI.");
+    if (!key.startsWith("sk-ant-")) fail("Anthropic mode requires an Anthropic API key; credentials for other providers are not forwarded.");
+    if (custom && !["https://api.anthropic.com/v1", "https://api.anthropic.com/v1/"].includes(custom)) fail("Anthropic mode only permits the official https://api.anthropic.com/v1 endpoint.");
+    return { LLM_API_KEY: key, LLM_MODEL: model, LLM_BASE_URL: "https://api.anthropic.com/v1", LLM_API_STYLE: "anthropic" };
+  }
+  if (process.env.LLM_API_KEY?.trim().startsWith("sk-ant-") || process.env.ANTHROPIC_API_KEY?.trim()) fail("Select LLM_API_STYLE=anthropic before configuring an Anthropic key; it is never sent to another provider.");
   if (custom) {
     const key = process.env.LLM_API_KEY?.trim();
     const model = process.env.LLM_MODEL?.trim();
@@ -155,7 +168,7 @@ function languageEnvironment(required: boolean): Record<string, string> {
   }
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) {
-    if (required) fail("Set OPENAI_API_KEY or an explicit LLM_BASE_URL + LLM_API_KEY + LLM_MODEL configuration.");
+    if (required) fail("Configure native Anthropic, OPENAI_API_KEY, or an explicit compatible LLM endpoint.");
     return {};
   }
   const values: Record<string, string> = { OPENAI_API_KEY: key };

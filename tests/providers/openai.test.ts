@@ -5,7 +5,7 @@ vi.mock("openai", () => ({ default: class MockOpenAI {
   chat = { completions: { create: sdk.chat } };
   constructor(options: unknown) { sdk.constructor(options); }
 } }));
-import { createDesignIntelligence, intelligenceModel, isIntelligenceConfigured, INTELLIGENCE_MODEL, type DesignSpecDraft, type IntelligenceResponseMetadata } from "@/lib/providers/openai";
+import { createDesignIntelligence, intelligenceModel, intelligenceProvider, isIntelligenceConfigured, INTELLIGENCE_MODEL, type DesignSpecDraft, type IntelligenceResponseMetadata } from "@/lib/providers/openai";
 
 const spec: DesignSpecDraft = { description: "A friendly cat", objectType: "figurine", use: "desk decoration", targetHeightMm: 120, preserve: ["face", "clothing"], changeable: ["ears"], process: "resin_candidate" };
 const response = (data: unknown) => ({ id: "resp_123", _request_id: "req_123", model: INTELLIGENCE_MODEL, status: "completed", output_text: JSON.stringify(data), output: [], usage: { input_tokens: 150, output_tokens: 100, total_tokens: 250, input_tokens_details: { cached_tokens: 20 } } });
@@ -13,7 +13,7 @@ const chatResponse = (data: unknown) => ({ id: "chatcmpl_123", _request_id: "req
 
 beforeEach(() => {
   vi.clearAllMocks();
-  for (const key of ["LLM_API_KEY", "OPENAI_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_STYLE"]) vi.stubEnv(key, "");
+  for (const key of ["LLM_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_STYLE"]) vi.stubEnv(key, "");
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -76,6 +76,7 @@ describe("bounded design intelligence", () => {
     expect(sdk.constructor).toHaveBeenCalledWith({ apiKey: "mock-openai-key", baseURL: undefined, maxRetries: 0, timeout: 45000 });
     expect(sdk.responses).toHaveBeenCalledTimes(1); expect(sdk.chat).not.toHaveBeenCalled();
     expect(intelligenceModel()).toBe(INTELLIGENCE_MODEL); expect(isIntelligenceConfigured()).toBe(true);
+    expect(intelligenceProvider()).toBe("openai");
   });
 
   it("uses the selected compatible endpoint, model and key with chat completions", async () => {
@@ -91,6 +92,7 @@ describe("bounded design intelligence", () => {
     expect(sdk.chat.mock.calls[0][0].messages).toEqual(expect.arrayContaining([expect.objectContaining({ role: "user", content: expect.arrayContaining([{ type: "image_url", image_url: { url: "https://v3.fal.media/reference.png", detail: "auto" } }]) })]));
     expect(onResponse).toHaveBeenCalledWith({ operation: "design_spec", responseId: "chatcmpl_123", requestId: "req_chat", model: "compatible-vision-model", inputTokens: 200, cachedInputTokens: 30, outputTokens: 90, totalTokens: 290 });
     expect(intelligenceModel()).toBe("compatible-vision-model");
+    expect(intelligenceProvider()).toBeNull();
   });
 
   it("supports explicit Responses style on a custom compatible endpoint", async () => {
@@ -148,6 +150,14 @@ describe("bounded design intelligence", () => {
     expect(() => createDesignIntelligence()).toThrow("explicit LLM_MODEL");
     vi.stubEnv("LLM_MODEL", "compatible-vision-model");
     expect(isIntelligenceConfigured()).toBe(true);
+    expect(sdk.constructor).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "responses", "chat_completions"])("rejects an Anthropic credential in non-native style %s before any SDK call", (style) => {
+    vi.stubEnv("LLM_API_KEY", "sk-ant-mock-secret"); vi.stubEnv("LLM_API_STYLE", style);
+    expect(isIntelligenceConfigured()).toBe(false);
+    expect(intelligenceProvider()).toBeNull();
+    expect(() => createDesignIntelligence()).toThrow("LLM_API_STYLE=anthropic");
     expect(sdk.constructor).not.toHaveBeenCalled();
   });
 });

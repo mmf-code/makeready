@@ -8,6 +8,21 @@ Keep runtime values in the process environment or ignored `.env.local`, using th
 
 Required runtime values for the photo-only MVP: `FAL_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `DEMO_PASSWORD`, `SESSION_SECRET`, `MCP_SECRET`, `EXECUTOR_SECRET`. Text-to-design and feedback planning/refinement remain unavailable until either `OPENAI_API_KEY` or the explicit alternative `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` is configured. An incomplete explicitly configured custom endpoint fails configuration; it never silently switches providers. A custom endpoint defaults to `LLM_API_STYLE=chat_completions`; `responses` is also supported when the endpoint implements it. The three signing/path/executor secrets need at least 32 characters. The storage bucket remains `makeready`; the hard application budget is at most $50. `OPENAI_MODEL` is unused and is not synced.
 
+### Claude Haiku 5.5
+
+Set these server-only values in ignored `.env.local`:
+
+```dotenv
+LLM_API_STYLE=anthropic
+LLM_BASE_URL=https://api.anthropic.com/v1
+LLM_MODEL=claude-haiku-5-5
+LLM_API_KEY=
+```
+
+Paste the actual key only into the final field locally. `ANTHROPIC_API_KEY` is an alternative name when `LLM_API_KEY` is empty. Native Anthropic mode uses one Messages request per operation, structured JSON plus final Zod validation, low effort, and verified image bytes supplied as base64. It has no OpenAI fallback or automatic retry. The endpoint is fixed to Anthropic; an Anthropic key configured in another transport fails before sending it. Provider response IDs, model ID and token usage remain in durable job receipts. The frozen job provider enum uses `null` for this additional LLM provider; it is not mislabeled as OpenAI.
+
+`claude-haiku-5-5` is the official fixed model ID. Account availability can be checked with the read-only Models API; that does not prove sufficient paid balance or a completed Messages request. [Anthropic migration guide](https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide)
+
 Vercel CLI must already be authenticated and this directory explicitly linked. The configuration script checks `.vercel/project.json`, then runs `vercel project inspect` and verifies the remote name and project ID before any write. It selects the Next.js framework preset during apply. Environment sync uses authenticated `vercel api` requests to `POST /v10/projects/:id/env?upsert=true`, with sensitive values in a JSON body over stdin. Omitting `gitBranch` applies Preview variables to all branches. Readback uses `decrypt=false` and verifies only names, targets, sensitive type, and branch scope. Values never appear in `--value` or `--token` arguments or printed API responses. [Vercel environment API](https://vercel.com/docs/rest-api/reference/endpoints/projects/create-one-or-more-environment-variables)
 
 To configure only the verified dedicated project's Next.js preset and make its preview reachable by ChatGPT/webhooks, without touching env or database:

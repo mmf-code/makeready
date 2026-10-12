@@ -110,6 +110,7 @@ describe("application lifecycle against the actual migration", () => {
     await db.exec("truncate public.generation_job_events,public.design_records,public.make_artifacts,public.generation_jobs,public.make_budgets,public.design_sessions restart identity cascade;");
     files.clear(); vi.clearAllMocks();
     vi.stubEnv("FAL_KEY","test-only"); vi.stubEnv("OPENAI_API_KEY","test-only"); vi.stubEnv("LLM_BASE_URL",""); vi.stubEnv("MAKE_BUDGET_USD","50");
+    for (const key of ["LLM_API_KEY", "ANTHROPIC_API_KEY", "LLM_API_STYLE", "LLM_MODEL"]) vi.stubEnv(key, "");
     mock.getDb.mockReturnValue({ from, storage }); mock.rpc.mockImplementation(rpc);
     mock.intelligence.mockImplementation((options: { onResponse?: (metadata: IntelligenceResponseMetadata) => Promise<void> }) => ({ planRevision: (input: unknown) => mock.plan(input,options.onResponse) }));
     mock.plan.mockImplementation(async (_input: unknown, onResponse?: (metadata: IntelligenceResponseMetadata) => Promise<void>) => {
@@ -236,6 +237,27 @@ describe("application lifecycle against the actual migration", () => {
     await expect(services.generateModel({ revisionId: child.id, confirmCost: true, idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "CONFLICT" });
     await services.decideRevision({ revisionId: child.id, decision: "approve" });
     expect((await services.generateModel({ revisionId: child.id, confirmCost: true, idempotencyKey: randomUUID() })).parentRevisionId).toBe(child.id);
+  });
+
+  it("stores the selected Claude model and receipt on a durable planning job", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "unused-openai-key");
+    vi.stubEnv("LLM_API_KEY", "sk-ant-test-only");
+    vi.stubEnv("LLM_API_STYLE", "anthropic");
+    vi.stubEnv("LLM_MODEL", "claude-haiku-5-5");
+    vi.stubEnv("LLM_BASE_URL", "https://api.anthropic.com/v1");
+    mock.plan.mockImplementation(async (_input: unknown, onResponse?: (metadata: IntelligenceResponseMetadata) => Promise<void>) => {
+      await onResponse?.({ operation: "revision_plan", responseId: "msg_test", requestId: "request-test", model: "claude-haiku-5-5", inputTokens: 40, cachedInputTokens: 10, outputTokens: 30, totalTokens: 70 });
+      return draft;
+    });
+    const revision = await parent(), services = createServices(scope);
+    const input = { sessionId: revision.sessionId, revisionId: revision.id, feedback: "Smaller ears", confirmCost: true as const, idempotencyKey: randomUUID() };
+    const plan = await services.planRevision(input);
+    const saved = (await rows<{ data: { provider: string | null; providerRequestId: string; status: string }; payload: { intelligenceReceipt: IntelligenceResponseMetadata } }>("select data,payload from public.generation_jobs where data->>'operation'='planning'"))[0];
+    expect(saved.data).toMatchObject({ provider: null, providerRequestId: "msg_test", status: "completed" });
+    expect(saved.payload.intelligenceReceipt).toMatchObject({ model: "claude-haiku-5-5", responseId: "msg_test", requestId: "request-test", inputTokens: 40, totalTokens: 70 });
+    expect(await services.planRevision(input)).toEqual(plan);
+    expect(mock.plan).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(saved)).not.toContain("sk-ant-test-only");
   });
 
   it("reuses a completed planning job without calling intelligence or charging again", async () => {
