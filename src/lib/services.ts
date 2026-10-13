@@ -73,7 +73,7 @@ export function createServices(scopeId="demo") {
       return {...rev,artifacts:await Promise.all(rev.artifacts.map(signedArtifact))};
     }));
     const byKind=(kind:string)=>records.filter(r=>r.kind===kind).map(r=>r.data);
-    const evaluations=byKind("evaluation");
+    const evaluations=await Promise.all(byKind("evaluation").map(async e=>e.kind==="visual"&&e.evidence?{...e,evidence:{...e.evidence,renderImage:await signedArtifact(e.evidence.renderImage),manifest:await signedArtifact(e.evidence.manifest)}}:e));
     const notChecked=[...new Set([...row.data.notChecked,...evaluations.flatMap(e=>e.kind==="physical"?e.audit.notChecked:[])])];
     // PostgREST returns timestamptz with a numeric offset; public contracts use UTC Z.
     return DesignSessionSchema.parse({...row.data,updatedAt:new Date(row.updated_at).toISOString(),spec:revisions.at(-1)?.spec||row.data.spec,revisions,jobs:jobs.map(j=>j.data),plans:byKind("plan"),evaluations,comparisons:byKind("comparison"),decisions:byKind("decision"),notChecked});

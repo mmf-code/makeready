@@ -7,8 +7,9 @@ import type { ArtifactRef, DesignSpec, GenerationJob, Revision } from "@/lib/con
 const mock = vi.hoisted(() => ({
   rpc: vi.fn(), getDb: vi.fn(), evaluate: vi.fn(), store: vi.fn(), read: vi.fn(), signed: vi.fn(), prepare: vi.fn(), pack: vi.fn(),
   configured: vi.fn(), spec: vi.fn(), critique: vi.fn(), submitConcept: vi.fn(), submitEdit: vi.fn(), submitModel: vi.fn(), poll: vi.fn(), result: vi.fn(), image: vi.fn(), glb: vi.fn(),
-  meshySubmit: vi.fn(), meshyPoll: vi.fn(), meshyResult: vi.fn(), meshyImage: vi.fn(), meshyGlb: vi.fn(),
+  meshySubmit: vi.fn(), meshyPoll: vi.fn(), meshyResult: vi.fn(), meshyImage: vi.fn(), meshyGlb: vi.fn(), render: vi.fn(),
 }));
+vi.mock("@/lib/geometry/render", () => ({ renderModelViews: mock.render, RENDERER_VERSION: "test-renderer-v1" }));
 vi.mock("@/lib/db", () => ({ getDb: mock.getDb, rpc: mock.rpc, checked: async (query: PromiseLike<{ data: unknown; error: unknown }>) => { const value = await query; if (value.error) throw value.error; return value.data; } }));
 vi.mock("@/lib/storage", () => ({ storeArtifact: mock.store, readArtifact: mock.read, signedArtifact: mock.signed }));
 vi.mock("@/lib/harness/evaluate", () => ({ evaluateRevision: mock.evaluate }));
@@ -52,7 +53,8 @@ function query(table: string) {
 
 beforeEach(() => {
   vi.clearAllMocks(); locked = false; record = undefined; activeRows = []; completedRows = [];
-  vi.stubEnv("ENABLE_MODEL_VISUAL_CRITIQUE", ""); mock.configured.mockReturnValue(true);
+  vi.stubEnv("ENABLE_MODEL_VISUAL_CRITIQUE", "false"); mock.configured.mockReturnValue(true);
+  mock.render.mockResolvedValue({ sheet: Buffer.alloc(32, 2), manifest: { modelSha256: "a".repeat(64), limitations: ["Simple lighting; no manufacturing certification."] } });
   row = {
     id: jobId, session_id: sessionId, fence: 0, provider_ref: null,
     data: { id: jobId, sessionId, parentRevisionId: null, planId: null, operation: "concept", status: "created", progress: null, provider: null, providerRequestId: null, attempts: 0, estimatedCostUsd: 0.5, result: null, error: null, createdAt: timestamp, updatedAt: timestamp },
@@ -169,7 +171,7 @@ describe("durable executor", () => {
     row.data.status = "completed"; row.data.result = { revisionId: record.id };
     row.payload.visualModel = "compatible-vision-model";
     await advanceJob(jobId);
-    expect(mock.evaluate).toHaveBeenCalledWith(record, undefined, undefined, "compatible-vision-model");
+    expect(mock.evaluate).toHaveBeenCalledWith(record, undefined, undefined, "compatible-vision-model", undefined, undefined);
     expect(mock.spec).not.toHaveBeenCalled(); expect(mock.critique).not.toHaveBeenCalled(); expect(mock.submitConcept).not.toHaveBeenCalled();
     expect(row.payload.evaluationComplete).toBe(true);
   });
@@ -296,7 +298,7 @@ describe("durable executor", () => {
     expect(record).toBeUndefined();
   });
 
-  it("stores and hash-binds a provider preview before the visual critic sees it", async () => {
+  it("renders the actual stored GLB, stores its evidence and critiques it once instead of a provider thumbnail", async () => {
     vi.stubEnv("ENABLE_MODEL_VISUAL_CRITIQUE", "true");
     const { source, image: reference } = manufacturingFixture();
     const parentImage = artifact("concept_image");
@@ -305,18 +307,83 @@ describe("durable executor", () => {
     mock.image.mockResolvedValue({ bytes: candidateBytes, mimeType: "image/png", sha256: "a".repeat(64) });
     mock.read.mockImplementation(async (ref: ArtifactRef) => ref.id === source.id ? new Uint8Array(32) : ref.id === reference.id ? referenceBytes : ref.id === parentImage.id ? parentBytes : candidateBytes);
     row.payload.providerResult = { job: row.provider_ref, imageUrls: [], glbUrl: "https://v3.fal.media/model.glb", thumbnailUrl: "https://v3.fal.media/preview.png" };
+    mock.critique.mockImplementationOnce(async () => {
+      expect(row.payload.modelVisualDispatchStarted).toBe(true);
+      expect(row.payload.dispatchInFlight).not.toBe(true);
+      return { summary: "Scarf present", alignment: "aligned", observations: [{ criterion: "scarf", finding: "Present", status: "met" }], preserveObserved: ["scarf"], suggestedChanges: [], limitations: ["Image-only"] };
+    });
     await advanceJob(jobId);
-    const preview = row.payload.previewArtifact as ArtifactRef;
-    expect(preview.kind).toBe("concept_image");
-    expect(mock.image).toHaveBeenCalledWith(expect.objectContaining({ imageUrls: ["https://v3.fal.media/preview.png"] }));
+    const sheet = row.payload.modelViewsArtifact as ArtifactRef;
+    expect(sheet.kind).toBe("concept_image");
+    expect(mock.image).not.toHaveBeenCalled();
+    expect(mock.render).toHaveBeenCalledWith(candidateBytes);
     expect(mock.critique).toHaveBeenCalledWith(expect.objectContaining({
       candidateImageUrl: `data:image/png;base64,${candidateBytes.toString("base64")}`,
-      parentImageUrl: `data:image/png;base64,${parentBytes.toString("base64")}`,
+      parentImageUrl: undefined, candidateKind: "model_views",
       referenceImageUrl: `data:image/png;base64,${referenceBytes.toString("base64")}`,
     }));
-    expect(mock.read).toHaveBeenCalledWith(preview);
+    expect(mock.read).toHaveBeenCalledWith(sheet);
     expect(mock.signed).not.toHaveBeenCalled();
-    expect(record?.artifacts.at(-1)).toEqual(preview);
+    expect(record?.artifacts).not.toContainEqual(sheet);
+    expect(row.payload.modelVisualEvidence).toMatchObject({ modelSha256: "a".repeat(64), referenceSha256: reference.sha256, renderImage: sheet });
+    expect(row.payload.modelVisualReviewState).toBe("completed");
+    await advanceJob(jobId);
+    expect(mock.critique).toHaveBeenCalledTimes(1);
+    expect(mock.render).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers an interrupted optional review by delivering the model without another paid call", async () => {
+    vi.stubEnv("ENABLE_MODEL_VISUAL_CRITIQUE", "true");
+    manufacturingFixture();
+    // Durable state left by a process killed after dispatch and before result storage.
+    row.payload.modelVisualDispatchStarted = true;
+    row.payload.dispatchInFlight = false;
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("completed");
+    expect(record?.artifacts.some(a => a.kind === "make_package")).toBe(true);
+    expect(row.payload.modelVisualReviewState).toBe("submission_unknown");
+    expect(row.payload.visualMethod).toBe("not_checked");
+    expect(mock.render).not.toHaveBeenCalled();
+    expect(mock.critique).not.toHaveBeenCalled();
+    expect(mock.submitModel).not.toHaveBeenCalled();
+    expect(mock.rpc).not.toHaveBeenCalledWith("mr_fail_job", expect.anything());
+  });
+
+  it("keeps automatic review disabled when the production flag is absent", async () => {
+    vi.stubEnv("ENABLE_MODEL_VISUAL_CRITIQUE", undefined);
+    manufacturingFixture();
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("completed");
+    expect(row.payload.modelVisualReviewState).toBe("skipped");
+    expect(mock.render).not.toHaveBeenCalled();
+    expect(mock.critique).not.toHaveBeenCalled();
+  });
+
+  it.each(["render", "provider", "unknown"])("preserves the prepared model after a %s review failure without retrying", async failure => {
+    vi.stubEnv("ENABLE_MODEL_VISUAL_CRITIQUE", "true");
+    manufacturingFixture();
+    if (failure === "render") mock.render.mockRejectedValueOnce(new Error("Unsupported material"));
+    else mock.critique.mockRejectedValueOnce(new ProviderError("Review unavailable", failure === "unknown" ? "transport" : "provider_failure", 429));
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("completed");
+    expect(record?.kind).toBe("manufacturing");
+    expect(row.payload.modelVisualReviewState).toBe(failure === "unknown" ? "submission_unknown" : "failed");
+    expect(row.payload.visualMethod).toBe("not_checked");
+    expect(row.payload.dispatchInFlight).toBe(false);
+    expect(row.payload.visual).toBeUndefined();
+    await advanceJob(jobId);
+    expect(mock.critique).toHaveBeenCalledTimes(failure === "render" ? 0 : 1);
+    expect(mock.submitModel).not.toHaveBeenCalled();
+  });
+
+  it("never makes a visual call if the rendered evidence hash differs from the model", async () => {
+    vi.stubEnv("ENABLE_MODEL_VISUAL_CRITIQUE", "true");
+    manufacturingFixture();
+    mock.render.mockResolvedValueOnce({ sheet: Buffer.alloc(32), manifest: { modelSha256: "b".repeat(64), limitations: [] } });
+    await advanceJob(jobId);
+    expect(row.data.status).toBe("completed");
+    expect(row.payload.modelVisualReviewState).toBe("failed");
+    expect(mock.critique).not.toHaveBeenCalled();
   });
 
   it("keeps signed HTTPS image references for fal model generation", async () => {

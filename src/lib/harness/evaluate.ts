@@ -1,10 +1,11 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { evaluateChecks, specChecks } from "./acceptance";
-import { ComparisonSchema, EvaluationSchema, PhysicalAuditSchema, RevisionPlanSchema, RevisionSchema,type Revision, type RevisionPlan, type PhysicalAudit, type Evaluation } from "../contracts";
+import { ComparisonSchema, EvaluationSchema, PhysicalAuditSchema, RevisionPlanSchema, RevisionSchema,type Revision, type RevisionPlan, type PhysicalAudit, type Evaluation, type ModelVisualEvidence } from "../contracts";
 import { checked, getDb } from "../db";
 import { readArtifact } from "../storage";
 import { databaseError } from "../errors";
+import { AppError } from "../errors";
 import type { VisualCritique } from "../providers/openai";
 
 function stableId(key:string) {
@@ -28,6 +29,26 @@ async function append(kind:"evaluation"|"comparison",sessionId:string,data:{id:s
   const {error}=await getDb().from("design_records").insert({id:data.id,session_id:sessionId,kind,data});
   // Deterministic IDs make repeated post-finalization projections safe.
   if(error&&error.code!=="23505") databaseError(error);
+}
+
+/** Append a separately requested review without rewriting an earlier not_checked observation. */
+export function modelReviewId(revision:Revision,evidence:Pick<ModelVisualEvidence,"renderer"|"modelSha256"|"referenceSha256">) {
+  return stableId(`${revision.id}:model-review:${evidence.renderer}:${evidence.modelSha256}:${evidence.referenceSha256}`);
+}
+export async function appendModelReview(revision:Revision,visual:VisualCritique,engine:string,evidence:ModelVisualEvidence) {
+  if(revision.kind!=="manufacturing" || !revision.artifacts.some(a=>a.kind==="model_glb"&&a.sha256===evidence.modelSha256)
+    || !revision.artifacts.some(a=>["concept_image","source_image"].includes(a.kind)&&a.sha256===evidence.referenceSha256)
+    || [evidence.renderImage,evidence.manifest].some(a=>a.sessionId!==revision.sessionId)) {
+    throw new AppError("INVALID_ARTIFACT","Visual evidence does not belong to this model and reference.",422);
+  }
+  const evaluation=EvaluationSchema.parse({id:modelReviewId(revision,evidence),sessionId:revision.sessionId,revisionId:revision.id,
+    artifactHashes:revision.artifacts.map(a=>a.sha256),kind:"visual",engine,
+    method:"Multimodal comparison of server-rendered front, side and three-quarter views of the exact stored GLB against the stored concept image",
+    summary:visual.summary,alignment:visual.alignment,changesObserved:visual.observations.map(o=>`${o.criterion}: ${o.finding} (${o.status})`),
+    preservationFindings:visual.preserveObserved,suggestedChanges:visual.suggestedChanges,uncertainties:visual.limitations,
+    limitations:[...visual.limitations,"Image review does not verify manufacturing suitability or regional dimensions."],evidence,createdAt:new Date().toISOString()});
+  await append("evaluation",revision.sessionId,evaluation);
+  return evaluation;
 }
 /** Follow only this session's immutable lineage, stopping on cycles or 30 revisions. */
 async function manufacturingAncestor(revision:Revision,parent:Revision):Promise<Revision|null> {
@@ -57,13 +78,13 @@ async function planBehind(revision:Revision,parent:Revision):Promise<RevisionPla
   return row?RevisionPlanSchema.parse(row.data):null;
 }
 /** Materialized observations are append-only and independently recoverable after finalization. */
-export async function evaluateRevision(revision:Revision,plan?:RevisionPlan,visual?:VisualCritique,visualModel?:string):Promise<void> {
+export async function evaluateRevision(revision:Revision,plan?:RevisionPlan,visual?:VisualCritique,visualModel?:string,evidence?:ModelVisualEvidence,visualSkipReason?:string):Promise<void> {
   const timestamp=revision.createdAt,hashes=revision.artifacts.map(a=>a.sha256);
   const base={sessionId:revision.sessionId,revisionId:revision.id,artifactHashes:hashes,createdAt:timestamp};
   const audit=await auditOf(revision);
   const evaluations:Evaluation[]=[];
   if(audit) evaluations.push(EvaluationSchema.parse({...base,id:stableId(`${revision.id}:physical`),kind:"physical",engine:audit.engineVersion,method:"Server-side decoded world-space triangles; positional welding; exact stored artifact hashes",limitations:audit.notChecked,audit}));
-  evaluations.push(EvaluationSchema.parse({...base,id:stableId(`${revision.id}:visual`),kind:"visual",engine:visual?(visualModel||"configured_llm"):"not_checked",method:visual?(revision.kind==="manufacturing"?"Multimodal comparison of actual stored provider preview and concept images":"Multimodal comparison of actual stored concept images"):"No independent visual model evaluation performed",summary:visual?.summary||"Visual fidelity of the 3D result has not been evaluated. Inspect matching camera views and provide a human decision.",changesObserved:visual?.observations.map(o=>`${o.criterion}: ${o.finding} (${o.status})`)||[],preservationFindings:visual?.preserveObserved||[],uncertainties:visual?.limitations||["No automated regional measurements or rendered 3D comparison."],limitations:[...(visual?.limitations||[]),"Image appearance does not verify the generated 3D geometry.","Regional feature dimensions were not measured."]}));
+  evaluations.push(EvaluationSchema.parse({...base,id:stableId(`${revision.id}:visual`),kind:"visual",engine:visual?(visualModel||"configured_llm"):"not_checked",method:visual?(evidence?"Multimodal comparison of server-rendered front, side and three-quarter views of the exact stored GLB against the stored concept image":"Multimodal comparison of actual stored concept images"):"No independent visual model evaluation performed",summary:visual?.summary||visualSkipReason||"Visual fidelity of the 3D result has not been evaluated. Inspect matching camera views and provide a human decision.",changesObserved:visual?.observations.map(o=>`${o.criterion}: ${o.finding} (${o.status})`)||[],preservationFindings:visual?.preserveObserved||[],uncertainties:visual?.limitations||[visualSkipReason||"No automated regional measurements or rendered 3D comparison."],limitations:[...(visual?.limitations||[]),"Image appearance does not verify manufacturing suitability or regional dimensions."],...(visual?{alignment:visual.alignment,suggestedChanges:visual.suggestedChanges}:{}),...(evidence?{evidence}:{})}));
   for(const evaluation of evaluations) await append("evaluation",revision.sessionId,evaluation);
   if(!revision.parentRevisionId) return;
   const row=await checked(getDb().from("design_records").select("data").eq("id",revision.parentRevisionId).eq("session_id",revision.sessionId).eq("kind","revision").single());
@@ -71,7 +92,7 @@ export async function evaluateRevision(revision:Revision,plan?:RevisionPlan,visu
   const acceptancePlan=plan??await planBehind(revision,parent);
   const auditRef=revision.artifacts.find(a=>a.kind==="audit");
   const acceptance=evaluateChecks([...(revision.kind==="manufacturing"?specChecks(revision.spec):[]),...(acceptancePlan?.checks??[])],audit,auditRef?.sha256??null,acceptancePlan?.id??null);
-  const comparison=ComparisonSchema.parse({id:stableId(`${revision.id}:comparison`),sessionId:revision.sessionId,parentRevisionId:parent.id,childRevisionId:revision.id,planId:plan?.id||null,visualEvaluationIds:evaluations.filter(e=>e.kind==="visual").map(e=>e.id),physicalEvaluationIds:evaluations.filter(e=>e.kind==="physical").map(e=>e.id),summary:visual?.summary||"Compare the preserved parent with this separately stored child. Geometry measurements and visual judgement remain separate.",differences:visual?.observations.filter(o=>o.status!=="uncertain").map(o=>`${o.criterion}: ${o.finding}`)||[],preservationFindings:visual?.preserveObserved||[],limitations:["Bounding-box differences do not prove regional changes or preserved facial features.","Camera preset specifies matched front, side and three-quarter views; automated render comparison was not performed.",...(visual?.limitations||[])],geometryDelta:compareGeometry(parentAudit,audit),cameraPreset:"matched_front_side_three_quarter",createdAt:timestamp,acceptance});
+  const comparison=ComparisonSchema.parse({id:stableId(`${revision.id}:comparison`),sessionId:revision.sessionId,parentRevisionId:parent.id,childRevisionId:revision.id,planId:plan?.id||null,visualEvaluationIds:visual?evaluations.filter(e=>e.kind==="visual").map(e=>e.id):[],physicalEvaluationIds:evaluations.filter(e=>e.kind==="physical").map(e=>e.id),summary:visual?.summary||"Geometry measurements are recorded separately. No visual comparison was performed.",differences:visual?.observations.filter(o=>o.status!=="uncertain").map(o=>`${o.criterion}: ${o.finding}`)||[],preservationFindings:visual?.preserveObserved||[],limitations:["Bounding-box differences do not prove regional changes or preserved facial features.",evidence?"The child's actual mesh views were compared with its reference image; this is not a matched render comparison between two 3D revisions.":"Camera preset specifies presentation only; no automated render comparison was performed.",...(visual?.limitations||[])],geometryDelta:compareGeometry(parentAudit,audit),cameraPreset:"matched_front_side_three_quarter",createdAt:timestamp,acceptance});
   await append("comparison",revision.sessionId,comparison);
   if(revision.kind!=="manufacturing"||parent.kind!=="concept"||!audit) return;
   const ancestor=await manufacturingAncestor(revision,parent);

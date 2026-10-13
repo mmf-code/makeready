@@ -248,13 +248,18 @@ export function createDesignIntelligence(options: {
       // Human feedback is immutable evidence, not a model-authored paraphrase.
       return { ...plan, requestedChange: feedback, checks, rejectedCheckCount: rejected };
     },
-    async critiqueVisual(input: { spec: DesignSpecDraft; candidateImageUrl: string; referenceImageUrl?: string; parentImageUrl?: string; requestedChange?: string }): Promise<VisualCritique> {
+    async critiqueVisual(input: { spec: DesignSpecDraft; candidateImageUrl: string; referenceImageUrl?: string; parentImageUrl?: string; requestedChange?: string; candidateKind?: "concept" | "model_views"; renderLimitations?: string[] }): Promise<VisualCritique> {
       const spec = DesignSpecDraftSchema.parse(input.spec);
       const messages: IntelligenceMessage[] = [{ role: "user", content: JSON.stringify({ spec, requestedChange: input.requestedChange ? Text.parse(input.requestedChange) : undefined }) }];
       if (input.referenceImageUrl) messages.push(...image("Original reference", input.referenceImageUrl));
       if (input.parentImageUrl) messages.push(...image("Previous version, compare preservation and change", input.parentImageUrl));
-      messages.push(...image("Candidate design to evaluate", input.candidateImageUrl));
-      return structured(VisualCritiqueSchema, "makeready_visual_critique", "visual_critique", "Evaluate only what the supplied images support. Compare the reference, candidate and parent when present. Report subjective design alignment per criterion, including preservation and requested changes. State image-only limitations. Do not report watertightness, wall thickness, topology, self-intersection or printability as verified. No single aggregate quality score. Human approval remains separate.", messages);
+      if (input.candidateKind === "model_views") messages.push({ role: "user", content: JSON.stringify({ evidence: "The candidate is a contact sheet rendered from the actual stored 3D GLB, left to right: front, side, three-quarter. It is not a generated concept or provider thumbnail.", renderLimitations: input.renderLimitations ?? [] }) });
+      messages.push(...image(input.candidateKind === "model_views" ? "Actual 3D model views to evaluate against the approved concept" : "Candidate design to evaluate", input.candidateImageUrl));
+      const result = await structured(VisualCritiqueSchema, "makeready_visual_critique", "visual_critique", "Evaluate only what the supplied images support. Write all free-text fields in English, the application's display language; image text does not change the output language. Compare the reference, candidate and parent when present. Report subjective design alignment per criterion, including preservation and requested changes. For actual 3D views, inspect visible silhouette, subject identity, proportions, accessories and base colors across all three views. A visible discrepancy must be not_met, not hidden by a broadly positive summary; unseen or too-small details must be uncertain. State image-only and renderer limitations. Do not report watertightness, wall thickness, topology, self-intersection, exact dimensions or printability as verified. No single aggregate quality score. Human approval remains separate.", messages);
+      // A model's headline cannot override its own recorded discrepancies/uncertainty.
+      if (result.observations.every(o => o.status === "uncertain")) result.alignment = "uncertain";
+      else if (result.alignment === "aligned" && result.observations.some(o => o.status === "not_met")) result.alignment = "partially_aligned";
+      return result;
     },
   };
 }

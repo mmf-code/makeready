@@ -21,6 +21,8 @@ interface GlbJson {
   extensionsRequired?: string[];
   accessors?: { count: number; componentType: number; type: string }[];
   nodes?: { children?: number[] }[];
+  buffers?: { uri?: string }[];
+  images?: { uri?: string }[];
 }
 
 export const sha256 = (data: Uint8Array): string => createHash("sha256").update(data).digest("hex");
@@ -97,7 +99,23 @@ async function configuredIo(extensions: string[]): Promise<NodeIO> {
     await MeshoptDecoder.ready;
     dependencies["meshopt.decoder"] = MeshoptDecoder;
   }
-  return new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(dependencies);
+  return new NodeIO().setAllowNetwork(false).registerExtensions(ALL_EXTENSIONS).registerDependencies(dependencies);
+}
+
+/** Shared bounded decoding for preparation and evidence rendering. No external resources. */
+export async function readStaticGlb(source: Uint8Array) {
+  const extensions = preflight(source);
+  const view = new DataView(source.buffer, source.byteOffset, source.byteLength);
+  const json = JSON.parse(new TextDecoder().decode(source.subarray(20, 20 + view.getUint32(12, true)))) as GlbJson;
+  if ([...(json.buffers ?? []), ...(json.images ?? [])].some((resource) => resource.uri && !resource.uri.startsWith("data:"))) {
+    fail("EXTERNAL_RESOURCE", "Evidence requires a self-contained GLB with no external resources.");
+  }
+  const io = await configuredIo(extensions);
+  let document: Document;
+  try { document = await io.readBinary(source); }
+  catch { return fail("GLB_DECODE_FAILED", "The GLB could not be decoded."); }
+  const triangles = trianglesOf(document, 1);
+  return { document, io, extensions, triangles };
 }
 
 function trianglesOf(document: Document, multiplier: number): TriangleSoup {
@@ -165,12 +183,7 @@ export async function prepareModel(input: { source: Uint8Array; targetHeightMm: 
   }
   // Keep an exact independent copy; NodeIO output is not byte-identical to the source.
   const source = Uint8Array.from(input.source);
-  const sourceExtensions = preflight(source);
-  const io = await configuredIo(sourceExtensions);
-  let document: Document;
-  try { document = await io.readBinary(source); }
-  catch (error) { return fail("GLB_DECODE_FAILED", `The GLB could not be decoded: ${error instanceof Error ? error.message : "unknown error"}`); }
-  const originalTriangles = trianglesOf(document, 1);
+  const { document, io, extensions: sourceExtensions, triangles: originalTriangles } = await readStaticGlb(source);
   const originalBounds = boundsOf(originalTriangles.positions);
   if (!Number.isFinite(originalBounds.height) || originalBounds.height <= 1e-12) fail("ZERO_HEIGHT", "The model has no measurable height.");
   const scaleFactor = input.targetHeightMm / 1000 / originalBounds.height;

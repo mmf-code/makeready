@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
-describe("signed demo access", () => {
+describe("open demo scope and legacy signed tokens", () => {
   it("verifies a signed fixed-scope token and expires after 24 hours", () => {
     const token = createAccessToken(now);
     expect(verifyAccessToken(token, now)).toBe(true);
@@ -52,7 +52,10 @@ describe("signed demo access", () => {
     const cookie = `${ACCESS_COOKIE}=${createAccessToken()}`;
     await expect(requireAccess(new Request("https://app.example.test/api/sessions", { headers: { cookie } }))).resolves.toBe("demo");
     await expect(requireAccess(new Request("https://app.example.test/api/sessions", { method: "POST", headers: { cookie, Origin: "https://attacker.example.test" } }))).rejects.toMatchObject({ code: "ACCESS_REQUIRED", status: 401 });
-    await expect(requireAccess(new Request("https://app.example.test/api/sessions"))).rejects.toMatchObject({ code: "ACCESS_REQUIRED" });
+    await expect(requireAccess(new Request("https://app.example.test/api/sessions"))).resolves.toBe("demo");
+    await expect(requireAccess()).resolves.toBe("demo");
+    await expect(requireAccess(new Request("https://app.example.test/api/sessions", { method: "POST", headers: { Origin: "https://app.example.test" } }))).resolves.toBe("demo");
+    await expect(requireAccess(new Request("https://app.example.test/api/sessions", { method: "POST", headers: { "sec-fetch-site": "cross-site" } }))).rejects.toMatchObject({ code: "ACCESS_REQUIRED", status: 401 });
   });
 });
 
@@ -96,24 +99,31 @@ describe("access route and local redirects", () => {
 });
 
 describe("Next.js access proxy", () => {
-  it("returns API401 and page redirect while preserving a local return path", async () => {
+  it("opens demo API and page reads without a cookie while rejecting cross-site writes", async () => {
     const api = await proxy(new NextRequest("https://app.example.test/api/sessions/abc"));
-    expect(api.status).toBe(401);
-    expect(await api.json()).toMatchObject({ error: { code: "ACCESS_REQUIRED" } });
+    expect(api.headers.get("x-middleware-next")).toBe("1");
     const page = await proxy(new NextRequest("https://app.example.test/?sessionId=abc"));
-    expect(page.status).toBe(307);
-    expect(new URL(page.headers.get("location")!).pathname).toBe("/access");
-    expect(new URL(page.headers.get("location")!).searchParams.get("returnTo")).toBe("/?sessionId=abc");
+    expect(page.headers.get("x-middleware-next")).toBe("1");
+    const denied = await proxy(new NextRequest("https://app.example.test/api/sessions", { method: "POST", headers: { Origin: "https://attacker.example.test" } }));
+    expect(denied.status).toBe(401);
+    expect(await denied.json()).toMatchObject({ error: { code: "ACCESS_REQUIRED" } });
   });
 
-  it("permits valid sessions and only the explicitly independent auth routes", async () => {
+  it("keeps secret-backed routes independent while checking the origin of other mutations", async () => {
     const authorized = await proxy(new NextRequest("https://app.example.test/api/sessions", { headers: { cookie: `${ACCESS_COOKIE}=${createAccessToken()}` } }));
     expect(authorized.headers.get("x-middleware-next")).toBe("1");
     for (const path of ["/access", "/api/access", "/agents", "/llms.txt", "/api/mcp/unguessable", "/api/webhooks/fal", "/api/internal/reconcile", "/globe.svg"]) {
       expect((await proxy(new NextRequest(`https://app.example.test${path}`))).headers.get("x-middleware-next")).toBe("1");
     }
     for (const path of ["/agents/private", "/llms.txt/private", "/api/sessions/report.svg", "/api/webhooks/fal/other", "/private.svg"]) {
-      expect((await proxy(new NextRequest(`https://app.example.test${path}`))).headers.get("x-middleware-next")).toBeNull();
+      const request = new NextRequest(`https://app.example.test${path}`, { method: "POST", headers: { Origin: "https://attacker.example.test" } });
+      const response = await proxy(request);
+      expect(response.status).toBe(path.startsWith("/api/") ? 401 : 307);
+      if (!path.startsWith("/api/")) {
+        const redirect = new URL(response.headers.get("location")!);
+        expect(redirect.pathname).toBe("/access");
+        expect(redirect.searchParams.get("returnTo")).toBe(path);
+      }
     }
   });
 });
